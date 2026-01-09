@@ -1,5 +1,8 @@
 package com.aws.sample;
 
+import java.util.List;
+import java.util.Map;
+
 import com.aws.sample.common.AwsConfig;
 import com.aws.sample.common.model.CommandResult;
 import com.aws.sample.dcv.DcvService;
@@ -7,9 +10,6 @@ import com.aws.sample.ec2.Ec2Service;
 import com.aws.sample.ec2.model.InstanceInfo;
 import com.aws.sample.iam.IamService;
 import com.aws.sample.ssm.SsmService;
-
-import java.util.List;
-import java.util.Map;
 
 /**
  * EC2 管理器 - 统一入口类
@@ -96,32 +96,22 @@ public class Ec2Manager implements AutoCloseable {
 
     // ==================== DCV 操作（免密登录）====================
 
-    public String generateDcvPresignedUrl(String serverIp, int serverPort, String sessionId, String authToken) {
-        return dcvService.generatePresignedUrl(serverIp, serverPort, sessionId, authToken);
-    }
-
-    public String generateDcvAuthToken(String instanceId, String sessionId, String user) {
-        List<String> commands = dcvService.getTokenGenerationCommands(sessionId, user);
-        String commandId = ssmService.executeCommand(instanceId, commands);
-        CommandResult result = ssmService.getCommandResult(commandId, instanceId);
-        
-        if (!result.isSuccess()) {
-            throw new RuntimeException("生成 DCV 令牌失败: " + result.getStandardError());
-        }
-        
-        String output = result.getStandardOutput();
-        String[] lines = output.split("\n");
-        for (int i = lines.length - 1; i >= 0; i--) {
-            String line = lines[i].trim();
-            if (!line.isEmpty()) {
-                return line;
-            }
-        }
-        throw new RuntimeException("无法从输出中提取 DCV 令牌");
+    /**
+     * 生成 DCV 免密登录 URL
+     */
+    public String generateDcvPresignedUrl(String instanceId, String serverIp) {
+        return dcvService.generatePresignedUrl(instanceId, serverIp);
     }
 
     /**
-     * 一键生成 DCV 免密登录 URL（推荐使用）
+     * 生成 DCV 免密登录 URL（指定用户和会话）
+     */
+    public String generateDcvPresignedUrl(String instanceId, String serverIp, String sessionId, String user) {
+        return dcvService.generatePresignedUrl(instanceId, serverIp, sessionId, user);
+    }
+
+    /**
+     * 一键生成 DCV 免密登录 URL（自动获取 IP）
      */
     public String generateDcvPresignedUrlForInstance(String instanceId) {
         InstanceInfo info = getInstanceInfo(instanceId);
@@ -134,8 +124,7 @@ public class Ec2Manager implements AutoCloseable {
             ip = info.getPrivateIpAddress();
         }
         
-        String token = generateDcvAuthToken(instanceId, "console", "ec2-user");
-        return generateDcvPresignedUrl(ip, config.getDcvPort(), "console", token);
+        return dcvService.generatePresignedUrl(instanceId, ip);
     }
 
     @Override

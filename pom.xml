@@ -58,6 +58,12 @@
             <artifactId>sagemaker</artifactId>
         </dependency>
 
+        <!-- AWS ECR SDK - 用于 Elastic Container Registry 操作 -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>ecr</artifactId>
+        </dependency>
+
         <!-- AWS STS SDK - 用于获取临时凭证（可选） -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
