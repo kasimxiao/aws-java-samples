@@ -43,6 +43,10 @@ public class Ec2Manager implements AutoCloseable {
         return ec2Service.createInstanceWithDefaults(instanceName);
     }
 
+    public String createInstanceWithDefaults(String instanceName, Map<String, String> additionalTags) {
+        return ec2Service.createInstanceWithDefaults(instanceName, additionalTags);
+    }
+
     public String createInstance(String amiId, String instanceType, String keyName,
                                   List<String> securityGroupIds, String subnetId,
                                   int ebsVolumeSize, String ebsVolumeType,

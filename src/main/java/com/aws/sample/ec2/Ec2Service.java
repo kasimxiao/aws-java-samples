@@ -71,6 +71,19 @@ public class Ec2Service implements AutoCloseable {
                                   List<String> securityGroupIds, String subnetId,
                                   int ebsVolumeSize, String ebsVolumeType,
                                   String instanceName, String iamInstanceProfile) {
+        return createInstance(amiId, instanceType, keyName, securityGroupIds, subnetId,
+                ebsVolumeSize, ebsVolumeType, instanceName, iamInstanceProfile, null);
+    }
+
+    /**
+     * 创建 EC2 实例（完整参数，支持自定义标签）
+     * @param additionalTags 额外的标签（可为 null）
+     */
+    public String createInstance(String amiId, String instanceType, String keyName,
+                                  List<String> securityGroupIds, String subnetId,
+                                  int ebsVolumeSize, String ebsVolumeType,
+                                  String instanceName, String iamInstanceProfile,
+                                  Map<String, String> additionalTags) {
 
         EbsBlockDevice ebsBlockDevice = EbsBlockDevice.builder()
                 .volumeSize(ebsVolumeSize)
@@ -84,6 +97,20 @@ public class Ec2Service implements AutoCloseable {
                 .ebs(ebsBlockDevice)
                 .build();
 
+        // 构建标签列表
+        List<Tag> tags = new ArrayList<>();
+        tags.add(Tag.builder().key("Name").value(instanceName).build());
+        if (additionalTags != null) {
+            additionalTags.forEach((k, v) -> tags.add(Tag.builder().key(k).value(v).build()));
+        }
+
+        // 为实例、卷、网络接口都添加标签（策略要求）
+        List<TagSpecification> tagSpecs = List.of(
+                TagSpecification.builder().resourceType(ResourceType.INSTANCE).tags(tags).build(),
+                TagSpecification.builder().resourceType(ResourceType.VOLUME).tags(tags).build(),
+                TagSpecification.builder().resourceType(ResourceType.NETWORK_INTERFACE).tags(tags).build()
+        );
+
         RunInstancesRequest.Builder requestBuilder = RunInstancesRequest.builder()
                 .imageId(amiId)
                 .instanceType(InstanceType.fromValue(instanceType))
@@ -93,10 +120,7 @@ public class Ec2Service implements AutoCloseable {
                 .blockDeviceMappings(blockDeviceMapping)
                 .minCount(1)
                 .maxCount(1)
-                .tagSpecifications(TagSpecification.builder()
-                        .resourceType(ResourceType.INSTANCE)
-                        .tags(Tag.builder().key("Name").value(instanceName).build())
-                        .build());
+                .tagSpecifications(tagSpecs);
 
         if (iamInstanceProfile != null && !iamInstanceProfile.isEmpty()) {
             requestBuilder.iamInstanceProfile(
@@ -114,6 +138,13 @@ public class Ec2Service implements AutoCloseable {
      * 使用默认配置创建实例
      */
     public String createInstanceWithDefaults(String instanceName) {
+        return createInstanceWithDefaults(instanceName, null);
+    }
+
+    /**
+     * 使用默认配置创建实例（支持自定义标签）
+     */
+    public String createInstanceWithDefaults(String instanceName, Map<String, String> additionalTags) {
         return createInstance(
                 config.getDefaultAmi(),
                 config.getInstanceType(),
@@ -123,7 +154,8 @@ public class Ec2Service implements AutoCloseable {
                 config.getEbsSize(),
                 config.getEbsType(),
                 instanceName != null ? instanceName : config.getNamePrefix(),
-                config.getInstanceProfile().isEmpty() ? null : config.getInstanceProfile()
+                config.getInstanceProfile().isEmpty() ? null : config.getInstanceProfile(),
+                additionalTags
         );
     }
 

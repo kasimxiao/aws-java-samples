@@ -1,0 +1,300 @@
+{
+  "PolicyName": "SageMakerServicePolicy",
+  "Description": "服务端调用 SageMaker 的 IAM 策略，基于 example 目录代码分析整理",
+  "Version": "2012-10-17",
+
+  "TrustPolicy": {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Principal": {
+          "Service": "sagemaker.amazonaws.com"
+        },
+        "Action": "sts:AssumeRole"
+      }
+    ]
+  },
+
+  "PolicyDocument": {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "S3BucketAccess",
+        "Effect": "Allow",
+        "Action": [
+          "s3:CreateBucket",
+          "s3:DeleteBucket",
+          "s3:ListBucket",
+          "s3:GetBucketLocation",
+          "s3:PutBucketTagging",
+          "s3:GetBucketTagging"
+        ],
+        "Resource": "arn:aws:s3:::toolchain-*"
+      },
+      {
+        "Sid": "S3ObjectAccess",
+        "Effect": "Allow",
+        "Action": [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:GetObjectVersion",
+          "s3:ListBucketVersions",
+          "s3:DeleteObjectVersion"
+        ],
+        "Resource": "arn:aws:s3:::toolchain-*/*"
+      },
+      {
+        "Sid": "ECRAuth",
+        "Effect": "Allow",
+        "Action": "ecr:GetAuthorizationToken",
+        "Resource": "*"
+      },
+      {
+        "Sid": "ECRRepositoryManagement",
+        "Effect": "Allow",
+        "Action": [
+          "ecr:CreateRepository",
+          "ecr:DeleteRepository",
+          "ecr:DescribeRepositories",
+          "ecr:ListImages",
+          "ecr:DescribeImages",
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          "ecr:PutImage",
+          "ecr:InitiateLayerUpload",
+          "ecr:UploadLayerPart",
+          "ecr:CompleteLayerUpload"
+        ],
+        "Resource": "arn:aws:ecr:*:*:repository/toolchain-*"
+      },
+
+      {
+        "Sid": "SageMakerTraining",
+        "Effect": "Allow",
+        "Action": [
+          "sagemaker:CreateTrainingJob",
+          "sagemaker:DescribeTrainingJob",
+          "sagemaker:StopTrainingJob",
+          "sagemaker:ListTrainingJobs"
+        ],
+        "Resource": "arn:aws:sagemaker:*:*:training-job/toolchain-*"
+      },
+      {
+        "Sid": "SageMakerModel",
+        "Effect": "Allow",
+        "Action": [
+          "sagemaker:CreateModel",
+          "sagemaker:DescribeModel",
+          "sagemaker:DeleteModel",
+          "sagemaker:ListModels"
+        ],
+        "Resource": "arn:aws:sagemaker:*:*:model/toolchain-*"
+      },
+      {
+        "Sid": "SageMakerEndpointConfig",
+        "Effect": "Allow",
+        "Action": [
+          "sagemaker:CreateEndpointConfig",
+          "sagemaker:DescribeEndpointConfig",
+          "sagemaker:DeleteEndpointConfig",
+          "sagemaker:ListEndpointConfigs"
+        ],
+        "Resource": "arn:aws:sagemaker:*:*:endpoint-config/toolchain-*"
+      },
+      {
+        "Sid": "SageMakerEndpoint",
+        "Effect": "Allow",
+        "Action": [
+          "sagemaker:CreateEndpoint",
+          "sagemaker:DescribeEndpoint",
+          "sagemaker:DeleteEndpoint",
+          "sagemaker:UpdateEndpoint",
+          "sagemaker:ListEndpoints",
+          "sagemaker:InvokeEndpoint"
+        ],
+        "Resource": "arn:aws:sagemaker:*:*:endpoint/toolchain-*"
+      },
+      {
+        "Sid": "SageMakerTags",
+        "Effect": "Allow",
+        "Action": [
+          "sagemaker:AddTags",
+          "sagemaker:ListTags"
+        ],
+        "Resource": [
+          "arn:aws:sagemaker:*:*:training-job/toolchain-*",
+          "arn:aws:sagemaker:*:*:model/toolchain-*",
+          "arn:aws:sagemaker:*:*:endpoint-config/toolchain-*",
+          "arn:aws:sagemaker:*:*:endpoint/toolchain-*"
+        ]
+      },
+      {
+        "Sid": "IAMRoleManagement",
+        "Effect": "Allow",
+        "Action": [
+          "iam:CreateRole",
+          "iam:DeleteRole",
+          "iam:GetRole",
+          "iam:AttachRolePolicy",
+          "iam:DetachRolePolicy",
+          "iam:ListAttachedRolePolicies",
+          "iam:PutRolePolicy",
+          "iam:DeleteRolePolicy",
+          "iam:PassRole"
+        ],
+        "Resource": "arn:aws:iam::*:role/toolchain-*"
+      },
+      {
+        "Sid": "CloudWatchLogs",
+        "Effect": "Allow",
+        "Action": [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogStreams",
+          "logs:GetLogEvents"
+        ],
+        "Resource": "arn:aws:logs:*:*:log-group:/aws/sagemaker/*"
+      },
+      {
+        "Sid": "CloudWatchMetrics",
+        "Effect": "Allow",
+        "Action": [
+          "cloudwatch:PutMetricData",
+          "cloudwatch:GetMetricData",
+          "cloudwatch:GetMetricStatistics",
+          "cloudwatch:ListMetrics"
+        ],
+        "Resource": "*"
+      },
+      {
+        "Sid": "EC2DescribeResources",
+        "Effect": "Allow",
+        "Action": [
+          "ec2:DescribeInstances",
+          "ec2:DescribeInstanceStatus",
+          "ec2:DescribeImages",
+          "ec2:DescribeTags",
+          "ec2:DescribeSecurityGroups",
+          "ec2:DescribeSubnets",
+          "ec2:DescribeVpcs"
+        ],
+        "Resource": "*"
+      },
+      {
+        "Sid": "EC2RunInstances",
+        "Effect": "Allow",
+        "Action": "ec2:RunInstances",
+        "Resource": [
+          "arn:aws:ec2:*:*:instance/*",
+          "arn:aws:ec2:*:*:volume/*",
+          "arn:aws:ec2:*:*:network-interface/*",
+          "arn:aws:ec2:*:*:subnet/*",
+          "arn:aws:ec2:*:*:security-group/*"
+        ],
+        "Condition": {
+          "StringEquals": {
+            "aws:RequestTag/project": "具身智能生态平台"
+          }
+        }
+      },
+      {
+        "Sid": "EC2RunInstancesAMI",
+        "Effect": "Allow",
+        "Action": "ec2:RunInstances",
+        "Resource": "arn:aws:ec2:*:*:image/*",
+        "Condition": {
+          "StringEquals": {
+            "ec2:ResourceTag/project": "具身智能生态平台"
+          }
+        }
+      },
+      {
+        "Sid": "EC2InstanceManagement",
+        "Effect": "Allow",
+        "Action": [
+          "ec2:StartInstances",
+          "ec2:StopInstances",
+          "ec2:RebootInstances",
+          "ec2:TerminateInstances"
+        ],
+        "Resource": "arn:aws:ec2:*:*:instance/*",
+        "Condition": {
+          "StringEquals": {
+            "ec2:ResourceTag/project": "具身智能生态平台"
+          }
+        }
+      },
+      {
+        "Sid": "EC2TagManagement",
+        "Effect": "Allow",
+        "Action": [
+          "ec2:CreateTags",
+          "ec2:DeleteTags"
+        ],
+        "Resource": "arn:aws:ec2:*:*:instance/*",
+        "Condition": {
+          "StringEquals": {
+            "ec2:ResourceTag/project": "具身智能生态平台"
+          }
+        }
+      },
+      {
+        "Sid": "EC2CreateTagsOnLaunch",
+        "Effect": "Allow",
+        "Action": "ec2:CreateTags",
+        "Resource": [
+          "arn:aws:ec2:*:*:instance/*",
+          "arn:aws:ec2:*:*:volume/*",
+          "arn:aws:ec2:*:*:network-interface/*"
+        ],
+        "Condition": {
+          "StringEquals": {
+            "ec2:CreateAction": "RunInstances"
+          }
+        }
+      },
+      {
+        "Sid": "EC2PassRole",
+        "Effect": "Allow",
+        "Action": "iam:PassRole",
+        "Resource": "arn:aws:iam::*:role/toolchain-*",
+        "Condition": {
+          "StringEquals": {
+            "iam:PassedToService": "ec2.amazonaws.com"
+          }
+        }
+      },
+      {
+        "Sid": "EC2InstanceProfileManagement",
+        "Effect": "Allow",
+        "Action": [
+          "iam:CreateInstanceProfile",
+          "iam:DeleteInstanceProfile",
+          "iam:GetInstanceProfile",
+          "iam:AddRoleToInstanceProfile",
+          "iam:RemoveRoleFromInstanceProfile"
+        ],
+        "Resource": "arn:aws:iam::*:instance-profile/toolchain-*"
+      },
+      {
+        "Sid": "EC2AssociateIamInstanceProfile",
+        "Effect": "Allow",
+        "Action": [
+          "ec2:AssociateIamInstanceProfile",
+          "ec2:DisassociateIamInstanceProfile",
+          "ec2:DescribeIamInstanceProfileAssociations"
+        ],
+        "Resource": "arn:aws:ec2:*:*:instance/*",
+        "Condition": {
+          "StringEquals": {
+            "ec2:ResourceTag/project": "具身智能生态平台"
+          }
+        }
+      }
+    ]
+  }
+}

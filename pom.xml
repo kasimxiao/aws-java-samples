@@ -17,7 +17,7 @@
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- AWS SDK 版本 -->
-        <aws.sdk.version>2.25.0</aws.sdk.version>
+        <aws.sdk.version>2.29.0</aws.sdk.version>
     </properties>
 
     <dependencyManagement>
@@ -70,6 +70,18 @@
             <artifactId>sts</artifactId>
         </dependency>
 
+        <!-- AWS Bedrock Runtime SDK - 用于调用 LLM 模型 -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>bedrockruntime</artifactId>
+        </dependency>
+
+        <!-- AWS Textract SDK - 用于 OCR 文档识别 -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>textract</artifactId>
+        </dependency>
+
         <!-- SLF4J 日志接口 -->
         <dependency>
             <groupId>org.slf4j</groupId>
@@ -103,6 +115,16 @@
                 <configuration>
                     <source>17</source>
                     <target>17</target>
+                </configuration>
+            </plugin>
+
+            <!-- Maven 测试插件 - 屏蔽 Unsafe 警告 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+                <configuration>
+                    <argLine>--add-opens java.base/sun.misc=ALL-UNNAMED</argLine>
                 </configuration>
             </plugin>
 

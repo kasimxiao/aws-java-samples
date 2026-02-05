@@ -7,8 +7,8 @@
 
 ## 核心依赖
 
-- AWS SDK for Java 2.x (v2.25.0)
-  - ec2、iam、ssm、sagemaker、ecr、sts
+- AWS SDK for Java 2.x (v2.29.0)
+  - ec2、iam、ssm、sagemaker、ecr、sts、bedrockruntime
 - SLF4J 2.0.9（日志）
 - JUnit 5.10.0（测试）
 

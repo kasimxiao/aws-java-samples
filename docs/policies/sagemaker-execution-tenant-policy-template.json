@@ -1,0 +1,88 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "S3TenantBucketList",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket",
+        "s3:GetBucketLocation"
+      ],
+      "Resource": "arn:aws:s3:::toolchain-${TENANT_ID}",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "training/*",
+            "models/*",
+            "data/*",
+            "output/*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "S3TenantDataRead",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectVersion"
+      ],
+      "Resource": [
+        "arn:aws:s3:::toolchain-${TENANT_ID}/training/*",
+        "arn:aws:s3:::toolchain-${TENANT_ID}/data/*",
+        "arn:aws:s3:::toolchain-${TENANT_ID}/models/*"
+      ]
+    },
+    {
+      "Sid": "S3TenantOutputWrite",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::toolchain-${TENANT_ID}/output/*",
+        "arn:aws:s3:::toolchain-${TENANT_ID}/models/*"
+      ]
+    },
+    {
+      "Sid": "ECRAuthToken",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "ECRTenantImagePull",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage"
+      ],
+      "Resource": [
+        "arn:aws:ecr:*:*:repository/toolchain-${TENANT_ID}",
+        "arn:aws:ecr:*:*:repository/toolchain-shared"
+      ]
+    },
+    {
+      "Sid": "CloudWatchLogsTenant",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:*:*:log-group:/aws/sagemaker/${TENANT_ID}/*"
+    },
+    {
+      "Sid": "CloudWatchMetricsTenant",
+      "Effect": "Allow",
+      "Action": "cloudwatch:PutMetricData",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "cloudwatch:namespace": "/aws/sagemaker/${TENANT_ID}"
+        }
+      }
+    }
+  ]
+}

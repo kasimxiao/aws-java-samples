@@ -1,0 +1,253 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EC2DescribeResources",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeInstances",
+        "ec2:DescribeInstanceStatus",
+        "ec2:DescribeImages",
+        "ec2:DescribeTags",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeVpcs",
+        "ec2:DescribeSnapshots",
+        "ec2:DescribeIamInstanceProfileAssociations"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/project": "toolchain"
+        }
+      }
+    },
+    {
+      "Sid": "EC2RunInstances",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": [
+        "arn:aws:ec2:*:*:instance/*",
+        "arn:aws:ec2:*:*:volume/*",
+        "arn:aws:ec2:*:*:network-interface/*",
+        "arn:aws:ec2:*:*:subnet/*",
+        "arn:aws:ec2:*:*:security-group/*",
+        "arn:aws:ec2:*:*:key-pair/*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/project": "toolchain"
+        }
+      }
+    },
+    {
+      "Sid": "EC2RunInstancesAMI",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:*:*:image/*"
+    },
+    {
+      "Sid": "EC2InstanceManagement",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:StartInstances",
+        "ec2:StopInstances",
+        "ec2:RebootInstances",
+        "ec2:TerminateInstances"
+      ],
+      "Resource": "arn:aws:ec2:*:*:instance/*",
+      "Condition": {
+        "StringEquals": {
+          "ec2:ResourceTag/project": "toolchain"
+        }
+      }
+    },
+    {
+      "Sid": "EC2TagManagement",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "Resource": [
+        "arn:aws:ec2:*:*:instance/*",
+        "arn:aws:ec2:*:*:volume/*",
+        "arn:aws:ec2:*:*:network-interface/*",
+        "arn:aws:ec2:*:*:image/*",
+        "arn:aws:ec2:*:*:snapshot/*"
+      ]
+    },
+    {
+      "Sid": "EC2AMIManagement",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:CreateImage",
+        "ec2:DeregisterImage",
+        "ec2:CopyImage",
+        "ec2:ModifyImageAttribute"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EC2SnapshotManagement",
+      "Effect": "Allow",
+      "Action": "ec2:DeleteSnapshot",
+      "Resource": "arn:aws:ec2:*:*:snapshot/*"
+    },
+    {
+      "Sid": "IAMInstanceProfileAssociation",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:AssociateIamInstanceProfile",
+        "ec2:DisassociateIamInstanceProfile"
+      ],
+      "Resource": "arn:aws:ec2:*:*:instance/*",
+      "Condition": {
+        "StringEquals": {
+          "ec2:ResourceTag/project": "toolchain"
+        }
+      }
+    },
+    {
+      "Sid": "IAMRoleManagement",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:GetRole",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:ListAttachedRolePolicies",
+        "iam:CreatePolicy",
+        "iam:DeletePolicy",
+        "iam:CreateInstanceProfile",
+        "iam:DeleteInstanceProfile",
+        "iam:GetInstanceProfile",
+        "iam:AddRoleToInstanceProfile",
+        "iam:RemoveRoleFromInstanceProfile",
+        "iam:PassRole"
+      ],
+      "Resource": [
+        "arn:aws:iam::*:role/toolchain-*",
+        "arn:aws:iam::*:policy/toolchain-*",
+        "arn:aws:iam::*:instance-profile/toolchain-*"
+      ]
+    },
+    {
+      "Sid": "SSMCommandExecution",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:SendCommand",
+        "ssm:GetCommandInvocation",
+        "ssm:ListCommands",
+        "ssm:ListCommandInvocations"
+      ],
+      "Resource": [
+        "arn:aws:ssm:*:*:document/AWS-RunShellScript",
+        "arn:aws:ec2:*:*:instance/*"
+      ]
+    },
+    {
+      "Sid": "ECRAuth",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "ECRRepositoryManagement",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:CreateRepository",
+        "ecr:DeleteRepository",
+        "ecr:DescribeRepositories",
+        "ecr:ListImages",
+        "ecr:DescribeImages",
+        "ecr:BatchDeleteImage",
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage",
+        "ecr:PutImage",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:PutLifecyclePolicy",
+        "ecr:GetLifecyclePolicy"
+      ],
+      "Resource": "arn:aws:ecr:*:*:repository/toolchain-*"
+    },
+    {
+      "Sid": "SageMakerOperations",
+      "Effect": "Allow",
+      "Action": [
+        "sagemaker:CreateTrainingJob",
+        "sagemaker:DescribeTrainingJob",
+        "sagemaker:StopTrainingJob",
+        "sagemaker:ListTrainingJobs",
+        "sagemaker:CreateModel",
+        "sagemaker:DescribeModel",
+        "sagemaker:DeleteModel",
+        "sagemaker:ListModels",
+        "sagemaker:CreateEndpointConfig",
+        "sagemaker:DescribeEndpointConfig",
+        "sagemaker:DeleteEndpointConfig",
+        "sagemaker:ListEndpointConfigs",
+        "sagemaker:CreateEndpoint",
+        "sagemaker:DescribeEndpoint",
+        "sagemaker:DeleteEndpoint",
+        "sagemaker:UpdateEndpoint",
+        "sagemaker:ListEndpoints",
+        "sagemaker:InvokeEndpoint",
+        "sagemaker:CreateMonitoringSchedule",
+        "sagemaker:DescribeMonitoringSchedule",
+        "sagemaker:DeleteMonitoringSchedule",
+        "sagemaker:ListMonitoringSchedules",
+        "sagemaker:StartMonitoringSchedule",
+        "sagemaker:StopMonitoringSchedule",
+        "sagemaker:ListMonitoringExecutions",
+        "sagemaker:CreateDataQualityJobDefinition",
+        "sagemaker:AddTags",
+        "sagemaker:ListTags"
+      ],
+      "Resource": [
+        "arn:aws:sagemaker:*:*:training-job/toolchain-*",
+        "arn:aws:sagemaker:*:*:model/toolchain-*",
+        "arn:aws:sagemaker:*:*:endpoint-config/toolchain-*",
+        "arn:aws:sagemaker:*:*:endpoint/toolchain-*",
+        "arn:aws:sagemaker:*:*:monitoring-schedule/toolchain-*",
+        "arn:aws:sagemaker:*:*:data-quality-job-definition/toolchain-*"
+      ]
+    },
+    {
+      "Sid": "S3BucketAccess",
+      "Effect": "Allow",
+      "Action": [
+        "s3:CreateBucket",
+        "s3:DeleteBucket",
+        "s3:ListBucket",
+        "s3:GetBucketLocation",
+        "s3:PutBucketTagging",
+        "s3:GetBucketTagging"
+      ],
+      "Resource": "arn:aws:s3:::toolchain-*"
+    },
+    {
+      "Sid": "S3ObjectAccess",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": "arn:aws:s3:::toolchain-*/*"
+    },
+    {
+      "Sid": "CloudWatchLogs",
+      "Effect": "Allow",
+      "Action": [
+        "logs:DescribeLogStreams",
+        "logs:GetLogEvents"
+      ],
+      "Resource": "arn:aws:logs:*:*:log-group:/aws/sagemaker/*"
+    }
+  ]
+}

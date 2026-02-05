@@ -1,16 +1,16 @@
 package com.aws.sample.common;
 
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
-import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
-import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
-import software.amazon.awssdk.regions.Region;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
+
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
 
 /**
  * AWS 配置管理类
@@ -54,6 +54,9 @@ public class AwsConfig {
     // S3 配置
     private String s3Bucket;
     private String s3MountPoint;
+
+    // 自定义凭证提供者（用于 AssumeRole 等场景）
+    private AwsCredentialsProvider customCredentialsProvider;
 
     public AwsConfig() {
         this("application.properties");
@@ -135,11 +138,22 @@ public class AwsConfig {
     }
 
     public AwsCredentialsProvider getCredentialsProvider() {
+        // 优先使用自定义凭证提供者
+        if (customCredentialsProvider != null) {
+            return customCredentialsProvider;
+        }
         if (accessKeyId != null && !accessKeyId.isEmpty() && !accessKeyId.startsWith("YOUR_")
                 && secretAccessKey != null && !secretAccessKey.isEmpty() && !secretAccessKey.startsWith("YOUR_")) {
             return StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKeyId, secretAccessKey));
         }
         return DefaultCredentialsProvider.create();
+    }
+
+    /**
+     * 设置自定义凭证提供者（用于 AssumeRole 等场景）
+     */
+    public void setCredentialsProvider(AwsCredentialsProvider credentialsProvider) {
+        this.customCredentialsProvider = credentialsProvider;
     }
 
     public Region getRegion() { return Region.of(region); }
@@ -156,6 +170,7 @@ public class AwsConfig {
     public String getEbsType() { return ebsType; }
     public String getNamePrefix() { return namePrefix; }
     public String getInstanceProfile() { return instanceProfile; }
+    public void setInstanceProfile(String instanceProfile) { this.instanceProfile = instanceProfile; }
     public int getDcvPort() { return dcvPort; }
     public String getS3Bucket() { return s3Bucket; }
     public String getS3MountPoint() { return s3MountPoint; }
