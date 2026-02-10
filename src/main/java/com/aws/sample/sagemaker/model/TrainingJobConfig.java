@@ -5,6 +5,20 @@ import java.util.Map;
 
 /**
  * SageMaker 训练任务配置
+ *
+ * 封装 CreateTrainingJob API 所需的全部参数，使用 Builder 模式构建。
+ *
+ * 必填参数:
+ * - jobName: 训练作业名称（全局唯一）
+ * - roleArn: SageMaker 执行角色 ARN（需有 S3、ECR、CloudWatch 等权限）
+ * - trainingImage: 训练容器镜像 URI（可通过 SageMakerImageService 获取）
+ *
+ * 默认值:
+ * - instanceType: ml.m5.xlarge
+ * - instanceCount: 1
+ * - volumeSizeGB: 50 GB
+ * - maxRuntimeSeconds: 86400（24 小时）
+ * - inputContentType: text/csv
  */
 public class TrainingJobConfig {
     

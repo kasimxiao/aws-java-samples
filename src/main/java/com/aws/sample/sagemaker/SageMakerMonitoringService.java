@@ -51,7 +51,36 @@ import software.amazon.awssdk.services.sagemaker.model.StopMonitoringScheduleReq
 
 /**
  * SageMaker 监控服务
- * 提供模型监控、数据质量监控和模型偏差检测功能
+ *
+ * 提供 SageMaker Model Monitor 的数据质量监控、调度管理和执行记录查询功能。
+ *
+ * 主要功能:
+ * - 创建数据质量基线任务（CreateDataQualityJobDefinition API）
+ * - 创建/启动/停止/删除监控调度（MonitoringSchedule 相关 API）
+ * - 查询监控调度状态和执行历史
+ *
+ * 监控类型:
+ * - DATA_QUALITY: 数据质量监控，检测输入数据的统计特征漂移
+ * - MODEL_QUALITY: 模型质量监控，检测模型预测准确率下降
+ * - MODEL_BIAS: 模型偏差监控，检测模型预测的公平性问题
+ * - MODEL_EXPLAINABILITY: 模型可解释性监控，检测特征重要性变化
+ *
+ * 监控流程:
+ * 1. 创建数据质量基线（生成 statistics.json 和 constraints.json）
+ * 2. 创建监控调度（定时执行监控任务，对比实时数据与基线）
+ * 3. 查看监控执行结果（检查是否有违规项）
+ *
+ * 使用示例:
+ * <pre>
+ * MonitoringConfig config = MonitoringConfig.builder()
+ *     .monitoringScheduleName("my-monitor")
+ *     .endpointName("my-endpoint")
+ *     .roleArn("arn:aws:iam::123456789012:role/SageMakerRole")
+ *     .s3OutputPath("s3://bucket/monitoring/")
+ *     .hourlySchedule()
+ *     .build();
+ * monitoringService.createMonitoringSchedule(config);
+ * </pre>
  */
 public class SageMakerMonitoringService {
 
@@ -68,6 +97,17 @@ public class SageMakerMonitoringService {
 
     /**
      * 创建数据质量监控基线任务
+     *
+     * 底层调用 SageMaker CreateDataQualityJobDefinition API。
+     * 基线任务会分析输入数据集，生成统计信息（statistics.json）和约束条件（constraints.json），
+     * 后续监控调度会将实时数据与基线进行对比，检测数据漂移。
+     *
+     * @param jobName           基线任务名称
+     * @param roleArn           SageMaker 执行角色 ARN
+     * @param baselineDatasetUri 基线数据集 S3 路径（CSV 格式，含表头）
+     * @param outputS3Uri       基线输出 S3 路径（生成 statistics.json 和 constraints.json）
+     * @param instanceType      处理实例类型（如 "ml.m5.xlarge"）
+     * @return 基线任务定义 ARN
      */
     public String createDataQualityBaseline(String jobName, String roleArn,
                                             String baselineDatasetUri, String outputS3Uri,
@@ -138,6 +178,13 @@ public class SageMakerMonitoringService {
 
     /**
      * 创建模型监控调度
+     *
+     * 底层调用 SageMaker CreateMonitoringSchedule API。
+     * 按 cron 表达式定时执行监控任务，将端点的实时推理数据与基线进行对比，
+     * 检测数据漂移和异常。监控结果输出到指定的 S3 路径。
+     *
+     * @param monitoringConfig 监控配置，包含调度名称、端点、角色、基线、输出路径、cron 表达式等
+     * @return 监控调度 ARN
      */
     public String createMonitoringSchedule(MonitoringConfig monitoringConfig) {
         System.out.println("创建监控调度: " + monitoringConfig.getMonitoringScheduleName());
@@ -219,7 +266,13 @@ public class SageMakerMonitoringService {
     }
 
     /**
-     * 获取监控调度状态
+     * 获取监控调度详情
+     *
+     * 底层调用 SageMaker DescribeMonitoringSchedule API，返回调度状态、
+     * 配置信息和最后一次执行摘要。
+     *
+     * @param scheduleName 监控调度名称
+     * @return 监控调度详情响应对象
      */
     public DescribeMonitoringScheduleResponse describeMonitoringSchedule(String scheduleName) {
         DescribeMonitoringScheduleRequest request = DescribeMonitoringScheduleRequest.builder()
@@ -230,6 +283,11 @@ public class SageMakerMonitoringService {
 
     /**
      * 启动监控调度
+     *
+     * 底层调用 SageMaker StartMonitoringSchedule API。
+     * 启动后按配置的 cron 表达式定时执行监控任务。
+     *
+     * @param scheduleName 监控调度名称
      */
     public void startMonitoringSchedule(String scheduleName) {
         System.out.println("启动监控调度: " + scheduleName);
@@ -242,6 +300,11 @@ public class SageMakerMonitoringService {
 
     /**
      * 停止监控调度
+     *
+     * 底层调用 SageMaker StopMonitoringSchedule API。
+     * 停止后不再执行定时监控任务，但调度资源仍保留，可重新启动。
+     *
+     * @param scheduleName 监控调度名称
      */
     public void stopMonitoringSchedule(String scheduleName) {
         System.out.println("停止监控调度: " + scheduleName);
@@ -254,6 +317,11 @@ public class SageMakerMonitoringService {
 
     /**
      * 删除监控调度
+     *
+     * 底层调用 SageMaker DeleteMonitoringSchedule API。
+     * 删除前需先停止调度。
+     *
+     * @param scheduleName 监控调度名称
      */
     public void deleteMonitoringSchedule(String scheduleName) {
         System.out.println("删除监控调度: " + scheduleName);
@@ -266,6 +334,13 @@ public class SageMakerMonitoringService {
 
     /**
      * 列出监控调度
+     *
+     * 底层调用 SageMaker ListMonitoringSchedules API，按创建时间降序排列。
+     * 支持按端点名称过滤。
+     *
+     * @param endpointName 端点名称过滤（可为 null，不过滤）
+     * @param maxResults   最大返回数量
+     * @return 监控调度摘要列表
      */
     public List<MonitoringScheduleSummary> listMonitoringSchedules(String endpointName, int maxResults) {
         ListMonitoringSchedulesRequest.Builder requestBuilder = ListMonitoringSchedulesRequest.builder()
@@ -284,6 +359,13 @@ public class SageMakerMonitoringService {
 
     /**
      * 列出监控执行记录
+     *
+     * 底层调用 SageMaker ListMonitoringExecutions API，按调度时间降序排列。
+     * 每次执行记录包含执行状态（Completed/Failed/InProgress）、调度时间和失败原因。
+     *
+     * @param scheduleName 监控调度名称
+     * @param maxResults   最大返回数量
+     * @return 监控执行摘要列表
      */
     public List<MonitoringExecutionSummary> listMonitoringExecutions(String scheduleName, int maxResults) {
         ListMonitoringExecutionsRequest request = ListMonitoringExecutionsRequest.builder()
@@ -299,6 +381,11 @@ public class SageMakerMonitoringService {
 
     /**
      * 获取默认监控镜像 URI
+     *
+     * 根据当前区域返回 SageMaker Model Monitor 内置分析器镜像的完整 URI。
+     * 镜像格式: {account}.dkr.ecr.{region}.amazonaws.com/sagemaker-model-monitor-analyzer
+     *
+     * @return 监控镜像 URI
      */
     private String getDefaultMonitoringImage() {
         String region = config.getRegion().id();
@@ -311,6 +398,11 @@ public class SageMakerMonitoringService {
 
     /**
      * 获取监控镜像账户 ID
+     *
+     * 不同 AWS 区域的 SageMaker Model Monitor 镜像托管在不同的 ECR 账户中。
+     *
+     * @param region AWS 区域代码（如 "us-east-1"、"cn-north-1"）
+     * @return 该区域的监控镜像 ECR 账户 ID
      */
     private String getMonitoringImageAccountId(String region) {
         return switch (region) {
@@ -333,7 +425,11 @@ public class SageMakerMonitoringService {
     }
 
     /**
-     * 打印监控调度详情
+     * 打印监控调度详情到控制台
+     *
+     * 格式化输出调度名称、ARN、状态、创建时间和最后一次执行信息。
+     *
+     * @param scheduleName 监控调度名称
      */
     public void printMonitoringScheduleDetails(String scheduleName) {
         DescribeMonitoringScheduleResponse schedule = describeMonitoringSchedule(scheduleName);
@@ -352,7 +448,12 @@ public class SageMakerMonitoringService {
     }
 
     /**
-     * 打印监控执行历史
+     * 打印监控执行历史到控制台
+     *
+     * 格式化输出最近 N 次监控执行的时间、状态和失败原因。
+     *
+     * @param scheduleName 监控调度名称
+     * @param count        最大显示条数
      */
     public void printMonitoringExecutionHistory(String scheduleName, int count) {
         List<MonitoringExecutionSummary> executions = listMonitoringExecutions(scheduleName, count);

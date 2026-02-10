@@ -5,6 +5,26 @@ import java.util.Map;
 
 /**
  * SageMaker 端点配置
+ *
+ * 封装 CreateModel / CreateEndpointConfig / CreateEndpoint API 所需的全部参数，
+ * 使用 Builder 模式构建。
+ *
+ * 必填参数:
+ * - modelName: 模型名称
+ *
+ * 默认值:
+ * - endpointConfigName: {modelName}-config
+ * - endpointName: {modelName}-endpoint
+ * - instanceType: ml.m5.xlarge
+ * - initialInstanceCount: 1
+ * - enableAutoScaling: false
+ * - enableDataCapture: false
+ * - dataCapturePercentage: 100（启用数据捕获时的采样率）
+ *
+ * 可选功能:
+ * - 自动扩缩容: enableAutoScaling + minCapacity/maxCapacity/targetInvocationsPerInstance
+ * - 数据捕获: enableDataCapture + dataCaptureS3Uri + dataCapturePercentage
+ * - 环境变量: 传递给推理容器的配置参数
  */
 public class EndpointConfig {
     

@@ -33,7 +33,38 @@ import software.amazon.awssdk.services.sagemaker.model.VpcConfig;
 
 /**
  * SageMaker 训练服务
- * 提供创建、管理和监控训练任务的功能
+ *
+ * 提供 SageMaker 训练作业的全生命周期管理，底层调用 SageMaker API。
+ *
+ * 主要功能:
+ * - 创建训练作业（CreateTrainingJob API）
+ * - 查询训练状态和详情（DescribeTrainingJob API）
+ * - 等待训练完成（轮询 DescribeTrainingJob）
+ * - 停止训练作业（StopTrainingJob API）
+ * - 列出训练作业（ListTrainingJobs API）
+ * - 获取模型输出路径（训练完成后的 model.tar.gz 路径）
+ *
+ * 训练状态流转:
+ * InProgress → Completed（成功）/ Failed（失败）/ Stopping → Stopped（手动停止）
+ *
+ * 使用示例:
+ * <pre>
+ * AwsConfig config = new AwsConfig();
+ * SageMakerTrainingService trainingService = new SageMakerTrainingService(config);
+ *
+ * // 创建训练作业
+ * TrainingJobConfig jobConfig = TrainingJobConfig.builder()
+ *     .jobName("my-training-job")
+ *     .roleArn("arn:aws:iam::123456789012:role/SageMakerRole")
+ *     .trainingImage("763104351884.dkr.ecr.us-east-1.amazonaws.com/pytorch-training:2.0.1-gpu-py310")
+ *     .s3TrainDataUri("s3://bucket/train/")
+ *     .s3OutputPath("s3://bucket/output/")
+ *     .build();
+ * trainingService.createTrainingJob(jobConfig);
+ *
+ * // 等待训练完成
+ * TrainingJobStatus status = trainingService.waitForTrainingJob("my-training-job", 60);
+ * </pre>
  */
 public class SageMakerTrainingService {
 
@@ -50,6 +81,16 @@ public class SageMakerTrainingService {
 
     /**
      * 创建训练任务
+     *
+     * 底层调用 SageMaker CreateTrainingJob API。
+     * 根据 TrainingJobConfig 构建输入数据通道（train/validation）、资源配置、
+     * 输出配置、停止条件和算法规格，可选配置 VPC 网络隔离。
+     *
+     * 数据输入模式为 FILE（先下载到本地再训练），数据分发类型为 FULLY_REPLICATED
+     * （每个实例获取完整数据副本）。
+     *
+     * @param jobConfig 训练任务配置，包含作业名称、角色、镜像、实例、数据路径、超参数等
+     * @return 训练作业 ARN
      */
     public String createTrainingJob(TrainingJobConfig jobConfig) {
         System.out.println("创建训练任务: " + jobConfig.getJobName());
@@ -145,6 +186,12 @@ public class SageMakerTrainingService {
 
     /**
      * 获取训练任务状态
+     *
+     * 底层调用 SageMaker DescribeTrainingJob API，仅返回状态枚举。
+     * 可能的状态值: InProgress、Completed、Failed、Stopping、Stopped
+     *
+     * @param jobName 训练作业名称
+     * @return 训练作业状态枚举
      */
     public TrainingJobStatus getTrainingJobStatus(String jobName) {
         DescribeTrainingJobRequest request = DescribeTrainingJobRequest.builder()
@@ -156,6 +203,12 @@ public class SageMakerTrainingService {
 
     /**
      * 获取训练任务详情
+     *
+     * 底层调用 SageMaker DescribeTrainingJob API，返回完整的训练作业信息，
+     * 包括状态、创建时间、训练时长、资源配置、模型输出路径、失败原因等。
+     *
+     * @param jobName 训练作业名称
+     * @return 训练作业详情响应对象
      */
     public DescribeTrainingJobResponse describeTrainingJob(String jobName) {
         DescribeTrainingJobRequest request = DescribeTrainingJobRequest.builder()
@@ -166,6 +219,14 @@ public class SageMakerTrainingService {
 
     /**
      * 等待训练任务完成
+     *
+     * 每 30 秒轮询一次 DescribeTrainingJob API，直到状态变为终态
+     * （Completed/Failed/Stopped）或超过最大等待时间。
+     *
+     * @param jobName        训练作业名称
+     * @param maxWaitMinutes 最大等待时间（分钟），超时后返回当前状态
+     * @return 训练作业最终状态
+     * @throws InterruptedException 等待过程中线程被中断
      */
     public TrainingJobStatus waitForTrainingJob(String jobName, int maxWaitMinutes) 
             throws InterruptedException {
@@ -194,6 +255,12 @@ public class SageMakerTrainingService {
 
     /**
      * 停止训练任务
+     *
+     * 底层调用 SageMaker StopTrainingJob API，发送异步停止请求。
+     * 调用后状态变为 Stopping，最终变为 Stopped。
+     * 已产生的训练费用仍会计费，部分训练的模型文件可能不完整。
+     *
+     * @param jobName 训练作业名称
      */
     public void stopTrainingJob(String jobName) {
         System.out.println("停止训练任务: " + jobName);
@@ -206,6 +273,13 @@ public class SageMakerTrainingService {
 
     /**
      * 列出训练任务
+     *
+     * 底层调用 SageMaker ListTrainingJobs API，按创建时间降序排列。
+     * 支持按名称模糊过滤。
+     *
+     * @param nameContains 名称过滤关键字（可为 null，不过滤）
+     * @param maxResults   最大返回数量
+     * @return 训练作业摘要列表，包含名称、状态、创建时间等
      */
     public List<TrainingJobSummary> listTrainingJobs(String nameContains, int maxResults) {
         ListTrainingJobsRequest.Builder requestBuilder = ListTrainingJobsRequest.builder()
@@ -223,6 +297,13 @@ public class SageMakerTrainingService {
 
     /**
      * 获取训练任务的模型输出路径
+     *
+     * 仅在训练状态为 Completed 时返回模型文件的 S3 路径（model.tar.gz），
+     * 该路径可直接用于 SageMaker 模型部署。
+     *
+     * @param jobName 训练作业名称
+     * @return 模型文件 S3 路径（如 s3://bucket/output/job-name/output/model.tar.gz），
+     *         训练未完成时返回 null
      */
     public String getModelArtifactPath(String jobName) {
         DescribeTrainingJobResponse response = describeTrainingJob(jobName);
@@ -233,7 +314,12 @@ public class SageMakerTrainingService {
     }
 
     /**
-     * 打印训练任务详情
+     * 打印训练任务详情到控制台
+     *
+     * 格式化输出训练作业的名称、ARN、状态、创建时间、实例配置等信息。
+     * 训练完成时额外显示训练时长和模型输出路径，训练失败时显示失败原因。
+     *
+     * @param jobName 训练作业名称
      */
     public void printTrainingJobDetails(String jobName) {
         DescribeTrainingJobResponse job = describeTrainingJob(jobName);

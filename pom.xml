@@ -82,6 +82,24 @@
             <artifactId>textract</artifactId>
         </dependency>
 
+        <!-- AWS CloudWatch Logs SDK - 用于查询训练日志 -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>cloudwatchlogs</artifactId>
+        </dependency>
+
+        <!-- AWS CloudWatch SDK - 用于查询训练指标 -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>cloudwatch</artifactId>
+        </dependency>
+
+        <!-- AWS SageMaker Runtime SDK - 用于端点推理调用 -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>sagemakerruntime</artifactId>
+        </dependency>
+
         <!-- SLF4J 日志接口 -->
         <dependency>
             <groupId>org.slf4j</groupId>

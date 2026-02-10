@@ -2,6 +2,25 @@ package com.aws.sample.sagemaker.model;
 
 /**
  * SageMaker 模型监控配置
+ *
+ * 封装 CreateMonitoringSchedule API 所需的全部参数，使用 Builder 模式构建。
+ *
+ * 必填参数:
+ * - monitoringScheduleName: 监控调度名称
+ * - endpointName: 被监控的端点名称
+ *
+ * 默认值:
+ * - monitoringType: DATA_QUALITY（数据质量监控）
+ * - instanceType: ml.m5.xlarge
+ * - instanceCount: 1
+ * - volumeSizeGB: 20 GB
+ * - scheduleExpression: cron(0 * ? * * *)（每小时执行）
+ *
+ * 监控类型说明:
+ * - DATA_QUALITY: 检测输入数据的统计特征漂移（如均值、方差、缺失率变化）
+ * - MODEL_QUALITY: 检测模型预测准确率下降
+ * - MODEL_BIAS: 检测模型预测的公平性问题
+ * - MODEL_EXPLAINABILITY: 检测特征重要性变化
  */
 public class MonitoringConfig {
     
