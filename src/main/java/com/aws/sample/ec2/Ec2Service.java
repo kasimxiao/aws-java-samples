@@ -13,6 +13,7 @@ import software.amazon.awssdk.services.ec2.model.BlockDeviceMapping;
 import software.amazon.awssdk.services.ec2.model.CopyImageRequest;
 import software.amazon.awssdk.services.ec2.model.CopyImageResponse;
 import software.amazon.awssdk.services.ec2.model.CreateImageRequest;
+import software.amazon.awssdk.services.ec2.model.InstanceNetworkInterfaceSpecification;
 import software.amazon.awssdk.services.ec2.model.CreateImageResponse;
 import software.amazon.awssdk.services.ec2.model.CreateTagsRequest;
 import software.amazon.awssdk.services.ec2.model.DeleteSnapshotRequest;
@@ -111,12 +112,19 @@ public class Ec2Service implements AutoCloseable {
                 TagSpecification.builder().resourceType(ResourceType.NETWORK_INTERFACE).tags(tags).build()
         );
 
+        // 通过网络接口设置子网、安全组和公有 IP
+        InstanceNetworkInterfaceSpecification networkInterface = InstanceNetworkInterfaceSpecification.builder()
+                .deviceIndex(0)
+                .subnetId(subnetId)
+                .groups(securityGroupIds)
+                .associatePublicIpAddress(true)
+                .build();
+
         RunInstancesRequest.Builder requestBuilder = RunInstancesRequest.builder()
                 .imageId(amiId)
                 .instanceType(InstanceType.fromValue(instanceType))
                 .keyName(keyName)
-                .securityGroupIds(securityGroupIds)
-                .subnetId(subnetId)
+                .networkInterfaces(networkInterface)
                 .blockDeviceMappings(blockDeviceMapping)
                 .minCount(1)
                 .maxCount(1)
