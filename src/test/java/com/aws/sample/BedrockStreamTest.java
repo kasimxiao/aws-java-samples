@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import com.aws.sample.bedrock.BedrockLlmService;
 import com.aws.sample.bedrock.BedrockStreamService;
+import com.aws.sample.common.AwsConfig;
 
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeAsyncClient;
@@ -18,8 +19,11 @@ public class BedrockStreamTest {
 
     @BeforeAll
     static void setup() {
+        // 通过 AwsConfig 获取凭证，优先使用配置文件中的 AKSK，没有则使用 aws configure 凭证
+        AwsConfig config = new AwsConfig();
         BedrockRuntimeAsyncClient asyncClient = BedrockRuntimeAsyncClient.builder()
                 .region(Region.US_EAST_1)
+                .credentialsProvider(config.getCredentialsProvider())
                 .build();
 
         streamService = new BedrockStreamService(asyncClient);

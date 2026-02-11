@@ -138,14 +138,19 @@ public class AwsConfig {
     }
 
     public AwsCredentialsProvider getCredentialsProvider() {
-        // 优先使用自定义凭证提供者
+        // 优先使用自定义凭证提供者（如 AssumeRole）
         if (customCredentialsProvider != null) {
+            System.out.println("凭证来源: 自定义凭证提供者");
             return customCredentialsProvider;
         }
+        // 其次使用配置文件中的 AKSK
         if (accessKeyId != null && !accessKeyId.isEmpty() && !accessKeyId.startsWith("YOUR_")
                 && secretAccessKey != null && !secretAccessKey.isEmpty() && !secretAccessKey.startsWith("YOUR_")) {
+            System.out.println("凭证来源: 配置文件 AKSK (AccessKeyId=" + accessKeyId.substring(0, 4) + "****)");
             return StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKeyId, secretAccessKey));
         }
+        // 最后使用默认凭证链（aws configure / 环境变量 / IAM Role）
+        System.out.println("凭证来源: 默认凭证链（aws configure / 环境变量 / IAM Role）");
         return DefaultCredentialsProvider.create();
     }
 

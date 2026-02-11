@@ -2,6 +2,8 @@ package com.aws.sample;
 
 import com.aws.sample.ec2.model.InstanceInfo;
 
+import java.util.Map;
+
 /**
  * 创建 EC2 实例测试
  */
@@ -13,8 +15,11 @@ public class CreateEc2Test {
         try (Ec2Manager manager = new Ec2Manager()) {
             manager.getConfig().printConfig();
 
+            // 添加 project=toolchain 标签，满足 IAM 策略条件
+            Map<String, String> tags = Map.of("project", "toolchain");
+
             System.out.println("\n正在创建 EC2 实例...");
-            String instanceId = manager.createInstanceWithDefaults("Kiro-Test-Instance");
+            String instanceId = manager.createInstanceWithDefaults("Kiro-Test-Instance", tags);
 
             System.out.println("\n========== 创建成功 ==========");
             System.out.println("实例 ID: " + instanceId);

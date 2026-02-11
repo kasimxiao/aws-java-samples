@@ -7,6 +7,7 @@ import java.util.List;
 import com.aws.sample.common.AwsConfig;
 
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
+import software.amazon.awssdk.services.cloudwatchlogs.model.DeleteLogGroupRequest;
 import software.amazon.awssdk.services.cloudwatchlogs.model.DescribeLogStreamsRequest;
 import software.amazon.awssdk.services.cloudwatchlogs.model.DescribeLogStreamsResponse;
 import software.amazon.awssdk.services.cloudwatchlogs.model.FilterLogEventsRequest;
@@ -17,6 +18,7 @@ import software.amazon.awssdk.services.cloudwatchlogs.model.GetLogEventsResponse
 import software.amazon.awssdk.services.cloudwatchlogs.model.LogStream;
 import software.amazon.awssdk.services.cloudwatchlogs.model.OrderBy;
 import software.amazon.awssdk.services.cloudwatchlogs.model.OutputLogEvent;
+import software.amazon.awssdk.services.cloudwatchlogs.model.PutRetentionPolicyRequest;
 
 /**
  * CloudWatch 日志查询服务
@@ -301,6 +303,74 @@ public class CloudWatchLogService {
             System.out.println("[" + timestamp + "] " + event.message());
         }
         System.out.println("==================================================");
+    }
+
+    /**
+     * 设置日志组的过期时间（保留天数）
+     *
+     * 底层调用 CloudWatch Logs PutRetentionPolicy API。
+     * 超过保留天数的日志事件会被自动删除。
+     *
+     * @param logGroupName  日志组名称（如 "/aws/sagemaker/TrainingJobs"）
+     * @param retentionDays 保留天数，支持的值: 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653
+     */
+    public void setLogGroupRetention(String logGroupName, int retentionDays) {
+        System.out.println("设置日志组过期时间: " + logGroupName + ", 保留天数: " + retentionDays);
+
+        PutRetentionPolicyRequest request = PutRetentionPolicyRequest.builder()
+                .logGroupName(logGroupName)
+                .retentionInDays(retentionDays)
+                .build();
+
+        logsClient.putRetentionPolicy(request);
+        System.out.println("日志组过期时间设置成功");
+    }
+
+    /**
+     * 设置训练作业日志组的过期时间
+     *
+     * @param retentionDays 保留天数
+     */
+    public void setTrainingLogRetention(int retentionDays) {
+        setLogGroupRetention(TRAINING_LOG_GROUP, retentionDays);
+    }
+
+    /**
+     * 设置推理端点日志组的过期时间
+     *
+     * @param endpointName  端点名称
+     * @param retentionDays 保留天数
+     */
+    public void setEndpointLogRetention(String endpointName, int retentionDays) {
+        setLogGroupRetention(ENDPOINT_LOG_GROUP + "/" + endpointName, retentionDays);
+    }
+
+    /**
+     * 删除日志组
+     *
+     * 底层调用 CloudWatch Logs DeleteLogGroup API。
+     * 删除后该日志组下的所有日志流和日志事件将被永久删除，不可恢复。
+     *
+     * @param logGroupName 日志组名称
+     */
+    public void deleteLogGroup(String logGroupName) {
+        System.out.println("删除日志组: " + logGroupName);
+
+        DeleteLogGroupRequest request = DeleteLogGroupRequest.builder()
+                .logGroupName(logGroupName)
+                .build();
+
+        logsClient.deleteLogGroup(request);
+        System.out.println("日志组删除成功");
+    }
+
+    /**
+     * 删除推理端点的日志组
+     *
+     * @param endpointName 端点名称
+     */
+    public void deleteEndpointLogGroup(String endpointName) {
+        deleteLogGroup(ENDPOINT_LOG_GROUP + "/" + endpointName);
     }
 
     public void close() {

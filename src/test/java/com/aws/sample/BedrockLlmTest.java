@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import com.aws.sample.bedrock.BedrockLlmService;
+import com.aws.sample.common.AwsConfig;
 
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
@@ -18,10 +19,11 @@ public class BedrockLlmTest {
 
     @BeforeAll
     static void setup() {
-        // 创建 Bedrock Runtime 客户端
-        // 注意：需要在支持 Bedrock 的区域运行，如 us-east-1, us-west-2
+        // 通过 AwsConfig 获取凭证，优先使用配置文件中的 AKSK，没有则使用 aws configure 凭证
+        AwsConfig config = new AwsConfig();
         BedrockRuntimeClient bedrockClient = BedrockRuntimeClient.builder()
                 .region(Region.US_EAST_1)
+                .credentialsProvider(config.getCredentialsProvider())
                 .build();
 
         llmService = new BedrockLlmService(bedrockClient);

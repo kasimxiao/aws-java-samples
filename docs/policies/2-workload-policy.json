@@ -13,14 +13,10 @@
         "ec2:DescribeSubnets",
         "ec2:DescribeVpcs",
         "ec2:DescribeSnapshots",
-        "ec2:DescribeIamInstanceProfileAssociations"
+        "ec2:DescribeIamInstanceProfileAssociations",
+        "ec2:DescribeInstanceTypes"
       ],
-      "Resource": "*",
-      "Condition": {
-        "StringEquals": {
-          "aws:RequestTag/project": "toolchain"
-        }
-      }
+      "Resource": "*"
     },
     {
       "Sid": "EC2RunInstances",
@@ -29,10 +25,7 @@
       "Resource": [
         "arn:aws:ec2:*:*:instance/*",
         "arn:aws:ec2:*:*:volume/*",
-        "arn:aws:ec2:*:*:network-interface/*",
-        "arn:aws:ec2:*:*:subnet/*",
-        "arn:aws:ec2:*:*:security-group/*",
-        "arn:aws:ec2:*:*:key-pair/*"
+        "arn:aws:ec2:*:*:network-interface/*"
       ],
       "Condition": {
         "StringEquals": {
@@ -41,10 +34,15 @@
       }
     },
     {
-      "Sid": "EC2RunInstancesAMI",
+      "Sid": "EC2RunInstancesPassthrough",
       "Effect": "Allow",
       "Action": "ec2:RunInstances",
-      "Resource": "arn:aws:ec2:*:*:image/*"
+      "Resource": [
+        "arn:aws:ec2:*:*:subnet/*",
+        "arn:aws:ec2:*:*:security-group/*",
+        "arn:aws:ec2:*:*:key-pair/*",
+        "arn:aws:ec2:*:*:image/*"
+      ]
     },
     {
       "Sid": "EC2InstanceManagement",
@@ -129,6 +127,7 @@
       ],
       "Resource": [
         "arn:aws:iam::*:role/toolchain-*",
+        "arn:aws:iam::*:role/EC2AdminRole",
         "arn:aws:iam::*:policy/toolchain-*",
         "arn:aws:iam::*:instance-profile/toolchain-*"
       ]
@@ -245,7 +244,10 @@
       "Effect": "Allow",
       "Action": [
         "logs:DescribeLogStreams",
-        "logs:GetLogEvents"
+        "logs:GetLogEvents",
+        "logs:FilterLogEvents",
+        "logs:PutRetentionPolicy",
+        "logs:DeleteLogGroup"
       ],
       "Resource": "arn:aws:logs:*:*:log-group:/aws/sagemaker/*"
     }
