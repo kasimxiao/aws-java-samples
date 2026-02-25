@@ -42,7 +42,7 @@ public class SageMakerDeploymentTest {
         String modelName = "xgboost-model-" + System.currentTimeMillis();
         
         // 获取 XGBoost 推理镜像
-        String xgboostImage = imageService.getXGBoostImage("1.7-1");
+        String xgboostImage = imageService.getImageUri("xgboost", "training", "1.7-1", null, false);
         System.out.println("XGBoost 镜像: " + xgboostImage);
 
         EndpointConfig endpointConfig = EndpointConfig.builder()
@@ -76,7 +76,7 @@ public class SageMakerDeploymentTest {
         String modelName = "pytorch-model-" + System.currentTimeMillis();
         
         // 获取 PyTorch 推理镜像
-        String pytorchImage = imageService.getPyTorchInferenceImage("2.0.1", "py310", false);
+        String pytorchImage = imageService.getImageUri("pytorch", "inference", "2.0.1", "py310", false);
         System.out.println("PyTorch 镜像: " + pytorchImage);
 
         EndpointConfig endpointConfig = EndpointConfig.builder()
@@ -106,7 +106,7 @@ public class SageMakerDeploymentTest {
     void testDeployWithAutoScaling() {
         String modelName = "autoscaling-model-" + System.currentTimeMillis();
         
-        String xgboostImage = imageService.getXGBoostImage("1.7-1");
+        String xgboostImage = imageService.getImageUri("xgboost", "training", "1.7-1", null, false);
 
         EndpointConfig endpointConfig = EndpointConfig.builder()
                 .modelName(modelName)
@@ -135,7 +135,7 @@ public class SageMakerDeploymentTest {
     void testDeployWithDataCapture() {
         String modelName = "datacapture-model-" + System.currentTimeMillis();
         
-        String xgboostImage = imageService.getXGBoostImage("1.7-1");
+        String xgboostImage = imageService.getImageUri("xgboost", "training", "1.7-1", null, false);
 
         EndpointConfig endpointConfig = EndpointConfig.builder()
                 .modelName(modelName)
@@ -167,7 +167,7 @@ public class SageMakerDeploymentTest {
         String modelName = "huggingface-model-" + System.currentTimeMillis();
         
         // 获取 HuggingFace 推理镜像
-        String hfImage = imageService.getHuggingFaceInferenceImage("4.28.1", "2.0.1", "py310", true);
+        String hfImage = imageService.getImageUri("huggingface", "inference", "4.28.1:2.0.1", "py310", true);
         System.out.println("HuggingFace 镜像: " + hfImage);
 
         EndpointConfig endpointConfig = EndpointConfig.builder()

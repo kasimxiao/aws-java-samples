@@ -42,7 +42,7 @@ public class SageMakerTrainingTest {
         String jobName = "xgboost-training-" + System.currentTimeMillis();
         
         // 获取 XGBoost 镜像
-        String xgboostImage = imageService.getXGBoostImage("1.7-1");
+        String xgboostImage = imageService.getImageUri("xgboost", "training", "1.7-1", null, false);
         System.out.println("XGBoost 镜像: " + xgboostImage);
 
         // 构建训练配置
@@ -90,7 +90,7 @@ public class SageMakerTrainingTest {
         String jobName = "pytorch-training-" + System.currentTimeMillis();
         
         // 获取 PyTorch GPU 训练镜像
-        String pytorchImage = imageService.getPyTorchTrainingImage("2.0.1", "py310", true);
+        String pytorchImage = imageService.getImageUri("pytorch", "training", "2.0.1", "py310", true);
         System.out.println("PyTorch 镜像: " + pytorchImage);
 
         TrainingJobConfig jobConfig = TrainingJobConfig.builder()
@@ -126,7 +126,7 @@ public class SageMakerTrainingTest {
         String jobName = "huggingface-training-" + System.currentTimeMillis();
         
         // 获取 HuggingFace 训练镜像
-        String hfImage = imageService.getHuggingFaceTrainingImage("4.28.1", "2.0.1", "py310", true);
+        String hfImage = imageService.getImageUri("huggingface", "training", "4.28.1:2.0.1", "py310", true);
         System.out.println("HuggingFace 镜像: " + hfImage);
 
         TrainingJobConfig jobConfig = TrainingJobConfig.builder()
@@ -164,7 +164,7 @@ public class SageMakerTrainingTest {
     void testDistributedTraining() {
         String jobName = "distributed-training-" + System.currentTimeMillis();
         
-        String pytorchImage = imageService.getPyTorchTrainingImage("2.0.1", "py310", true);
+        String pytorchImage = imageService.getImageUri("pytorch", "training", "2.0.1", "py310", true);
 
         TrainingJobConfig jobConfig = TrainingJobConfig.builder()
                 .jobName(jobName)

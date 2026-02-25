@@ -11,12 +11,17 @@ import com.aws.sample.common.AwsConfig;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.Bucket;
+import software.amazon.awssdk.services.s3.model.CORSConfiguration;
+import software.amazon.awssdk.services.s3.model.CORSRule;
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
 import software.amazon.awssdk.services.s3.model.CreateBucketResponse;
 import software.amazon.awssdk.services.s3.model.Delete;
+import software.amazon.awssdk.services.s3.model.DeleteBucketCorsRequest;
 import software.amazon.awssdk.services.s3.model.DeleteBucketRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
+import software.amazon.awssdk.services.s3.model.GetBucketCorsRequest;
+import software.amazon.awssdk.services.s3.model.GetBucketCorsResponse;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
 import software.amazon.awssdk.services.s3.model.ListBucketsResponse;
@@ -24,6 +29,7 @@ import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
 import software.amazon.awssdk.services.s3.model.NoSuchBucketException;
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
+import software.amazon.awssdk.services.s3.model.PutBucketCorsRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Object;
 import software.amazon.awssdk.services.s3.model.Tag;
@@ -31,15 +37,13 @@ import software.amazon.awssdk.services.s3.model.Tagging;
 
 /**
  * S3 服务类
- * 提供 S3 存储桶管理和对象操作功能
+ * 提供 S3 存储桶管理、对象操作和 CORS 跨域配置功能
  */
 public class S3Service implements AutoCloseable {
 
     private final S3Client s3Client;
-    private final AwsConfig config;
 
     public S3Service(AwsConfig config) {
-        this.config = config;
         this.s3Client = S3Client.builder()
                 .region(config.getRegion())
                 .credentialsProvider(config.getCredentialsProvider())
@@ -72,7 +76,6 @@ public class S3Service implements AutoCloseable {
         System.out.println("S3 存储桶创建成功: " + bucketName);
         System.out.println("Location: " + response.location());
 
-        // 创建后打标签
         if (tags != null && !tags.isEmpty()) {
             tagBucket(bucketName, tags);
         }
@@ -115,9 +118,7 @@ public class S3Service implements AutoCloseable {
      * @param bucketName 存储桶名称
      */
     public void forceDeleteBucket(String bucketName) {
-        // 先清空存储桶
         deleteAllObjects(bucketName);
-        // 再删除存储桶
         deleteBucket(bucketName);
     }
 
@@ -294,6 +295,117 @@ public class S3Service implements AutoCloseable {
         }
         System.out.println("=================================================");
         return allObjects;
+    }
+
+    // ==================== CORS 跨域配置 ====================
+
+    /**
+     * 为存储桶设置 CORS 跨域配置（适用于前端 JavaScript 直接访问 S3 的场景）
+     * 默认配置允许常见的 S3 操作：PUT、GET、DELETE、HEAD、POST
+     *
+     * @param bucketName     存储桶名称
+     * @param allowedOrigins 允许的源域名列表，如 ["http://localhost:3000", "https://example.com"]
+     */
+    public void putBucketCorsForOrigins(String bucketName, List<String> allowedOrigins) {
+        CORSRule corsRule = CORSRule.builder()
+                .allowedOrigins(allowedOrigins)
+                .allowedMethods("GET", "PUT", "POST", "DELETE", "HEAD")
+                .allowedHeaders("*")
+                .exposeHeaders("ETag", "x-amz-request-id", "x-amz-id-2", "Content-Length", "Content-Type")
+                .maxAgeSeconds(3600)
+                .build();
+
+        putBucketCors(bucketName, List.of(corsRule));
+    }
+
+    /**
+     * 为存储桶设置自定义 CORS 规则
+     *
+     * @param bucketName 存储桶名称
+     * @param corsRules  CORS 规则列表
+     */
+    public void putBucketCors(String bucketName, List<CORSRule> corsRules) {
+        CORSConfiguration corsConfiguration = CORSConfiguration.builder()
+                .corsRules(corsRules)
+                .build();
+
+        PutBucketCorsRequest request = PutBucketCorsRequest.builder()
+                .bucket(bucketName)
+                .corsConfiguration(corsConfiguration)
+                .build();
+
+        s3Client.putBucketCors(request);
+        System.out.println("存储桶 CORS 配置已设置: " + bucketName);
+        for (CORSRule rule : corsRules) {
+            System.out.println("  允许的源: " + rule.allowedOrigins());
+            System.out.println("  允许的方法: " + rule.allowedMethods());
+            System.out.println("  允许的头: " + rule.allowedHeaders());
+        }
+    }
+
+    /**
+     * 获取存储桶的 CORS 配置
+     *
+     * @param bucketName 存储桶名称
+     * @return CORS 规则列表
+     */
+    public List<CORSRule> getBucketCors(String bucketName) {
+        try {
+            GetBucketCorsRequest request = GetBucketCorsRequest.builder()
+                    .bucket(bucketName)
+                    .build();
+
+            GetBucketCorsResponse response = s3Client.getBucketCors(request);
+            List<CORSRule> rules = response.corsRules();
+
+            System.out.println("==================== CORS 配置 ====================");
+            System.out.println("存储桶: " + bucketName);
+            for (int i = 0; i < rules.size(); i++) {
+                CORSRule rule = rules.get(i);
+                System.out.println("规则 " + (i + 1) + ":");
+                System.out.println("  允许的源: " + rule.allowedOrigins());
+                System.out.println("  允许的方法: " + rule.allowedMethods());
+                System.out.println("  允许的头: " + rule.allowedHeaders());
+                System.out.println("  暴露的头: " + rule.exposeHeaders());
+                System.out.println("  缓存时间: " + rule.maxAgeSeconds() + " 秒");
+            }
+            System.out.println("===================================================");
+            return rules;
+        } catch (Exception e) {
+            if (e.getMessage() != null && e.getMessage().contains("NoSuchCORSConfiguration")) {
+                System.out.println("存储桶 " + bucketName + " 未配置 CORS");
+                return List.of();
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * 删除存储桶的 CORS 配置
+     *
+     * @param bucketName 存储桶名称
+     */
+    public void deleteBucketCors(String bucketName) {
+        DeleteBucketCorsRequest request = DeleteBucketCorsRequest.builder()
+                .bucket(bucketName)
+                .build();
+
+        s3Client.deleteBucketCors(request);
+        System.out.println("存储桶 CORS 配置已删除: " + bucketName);
+    }
+
+    /**
+     * 创建存储桶并配置 CORS（便捷方法，适用于前端直传场景）
+     *
+     * @param bucketName     存储桶名称
+     * @param allowedOrigins 允许的源域名列表
+     * @param tags           标签（可为 null）
+     * @return 存储桶名称
+     */
+    public String createBucketWithCors(String bucketName, List<String> allowedOrigins, Map<String, String> tags) {
+        createBucket(bucketName, tags);
+        putBucketCorsForOrigins(bucketName, allowedOrigins);
+        return bucketName;
     }
 
     /**

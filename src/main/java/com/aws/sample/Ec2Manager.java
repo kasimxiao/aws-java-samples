@@ -9,7 +9,12 @@ import com.aws.sample.dcv.DcvService;
 import com.aws.sample.ec2.Ec2Service;
 import com.aws.sample.ec2.model.InstanceInfo;
 import com.aws.sample.iam.IamService;
+import com.aws.sample.s3.S3Service;
 import com.aws.sample.ssm.SsmService;
+import com.aws.sample.sts.StsService;
+
+import software.amazon.awssdk.services.s3.model.CORSRule;
+import software.amazon.awssdk.services.sts.model.Credentials;
 
 /**
  * EC2 管理器 - 统一入口类
@@ -22,6 +27,8 @@ public class Ec2Manager implements AutoCloseable {
     private final IamService iamService;
     private final SsmService ssmService;
     private final DcvService dcvService;
+    private final S3Service s3Service;
+    private final StsService stsService;
 
     public Ec2Manager() {
         this(new AwsConfig());
@@ -33,6 +40,8 @@ public class Ec2Manager implements AutoCloseable {
         this.iamService = new IamService(config);
         this.ssmService = new SsmService(config);
         this.dcvService = new DcvService(config);
+        this.s3Service = new S3Service(config);
+        this.stsService = new StsService(config);
     }
 
     public AwsConfig getConfig() { return config; }
@@ -131,10 +140,85 @@ public class Ec2Manager implements AutoCloseable {
         return dcvService.generatePresignedUrl(instanceId, ip);
     }
 
+    // ==================== S3 CORS 跨域配置 ====================
+
+    /**
+     * 为 S3 存储桶设置 CORS 跨域配置
+     * @param bucketName 存储桶名称
+     * @param allowedOrigins 允许的源域名列表
+     */
+    public void putBucketCorsForOrigins(String bucketName, List<String> allowedOrigins) {
+        s3Service.putBucketCorsForOrigins(bucketName, allowedOrigins);
+    }
+
+    /**
+     * 为 S3 存储桶设置自定义 CORS 规则
+     */
+    public void putBucketCors(String bucketName, List<CORSRule> corsRules) {
+        s3Service.putBucketCors(bucketName, corsRules);
+    }
+
+    /**
+     * 获取 S3 存储桶的 CORS 配置
+     */
+    public List<CORSRule> getBucketCors(String bucketName) {
+        return s3Service.getBucketCors(bucketName);
+    }
+
+    /**
+     * 删除 S3 存储桶的 CORS 配置
+     */
+    public void deleteBucketCors(String bucketName) {
+        s3Service.deleteBucketCors(bucketName);
+    }
+
+    /**
+     * 创建 S3 存储桶并配置 CORS（适用于前端直传场景）
+     */
+    public String createBucketWithCors(String bucketName, List<String> allowedOrigins, Map<String, String> tags) {
+        return s3Service.createBucketWithCors(bucketName, allowedOrigins, tags);
+    }
+
+    // ==================== STS 临时凭证 ====================
+
+    /**
+     * 通过 AssumeRole 获取临时凭证（前端 JS 使用临时凭证直接操作 S3）
+     * @param roleArn 要扮演的 IAM 角色 ARN
+     * @param sessionName 会话名称
+     * @return 临时凭证
+     */
+    public Credentials assumeRole(String roleArn, String sessionName) {
+        return stsService.assumeRole(roleArn, sessionName);
+    }
+
+    /**
+     * 通过 AssumeRole 获取临时凭证（指定有效期）
+     */
+    public Credentials assumeRole(String roleArn, String sessionName, int durationSeconds) {
+        return stsService.assumeRole(roleArn, sessionName, durationSeconds);
+    }
+
+    /**
+     * 获取限定 S3 桶访问权限的临时凭证
+     */
+    public Credentials assumeRoleForS3Bucket(String roleArn, String sessionName, String bucketName) {
+        return stsService.assumeRoleForS3Bucket(roleArn, sessionName, bucketName);
+    }
+
+    /**
+     * 获取限定 S3 桶和前缀访问权限的临时凭证（多租户场景）
+     */
+    public Credentials assumeRoleForS3Bucket(String roleArn, String sessionName,
+                                              String bucketName, String prefix) {
+        return stsService.assumeRoleForS3Bucket(roleArn, sessionName, bucketName, prefix);
+    }
+
     @Override
     public void close() {
         ec2Service.close();
         iamService.close();
         ssmService.close();
+        s3Service.close();
+        stsService.close();
     }
 }
