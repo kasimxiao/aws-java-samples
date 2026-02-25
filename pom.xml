@@ -34,6 +34,12 @@
     </dependencyManagement>
 
     <dependencies>
+        <!-- AWS S3 SDK - 用于 S3 存储桶和对象操作 -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+        </dependency>
+
         <!-- AWS EC2 SDK -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
