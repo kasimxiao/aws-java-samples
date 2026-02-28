@@ -557,6 +557,130 @@ public class CloudWatchMonitoringTest {
         System.out.println("======================================================");
     }
 
+    // ==================== 六-B、Logs Insights 日志查询 ====================
+    // 底层 API: CloudWatch Logs StartQuery + GetQueryResults
+    // Logs Insights 提供比 FilterLogEvents 更强大的查询语法，
+    // 支持 fields、filter、stats、sort、limit、parse 等命令，
+    // 适合复杂的日志分析、聚合统计和错误诊断场景
+
+    /**
+     * 示例：使用 Logs Insights 自定义查询训练日志
+     *
+     * 底层调用 CloudWatch Logs StartQuery API 提交查询，
+     * 然后轮询 GetQueryResults API 获取结果。
+     * 查询语句使用 Logs Insights 语法，支持 fields、filter、stats、sort、limit 等命令。
+     */
+    @Test
+    void testRunTrainingInsightsQuery() {
+        Instant endTime = Instant.now();
+        Instant startTime = endTime.minus(Duration.ofHours(24));
+
+        // 查询最近 24 小时内包含 "Loss" 的日志，按时间倒序
+        String query = "fields @timestamp, @message "
+                + "| filter @message like /Loss/ "
+                + "| sort @timestamp desc "
+                + "| limit 20";
+
+        var results = logService.runTrainingInsightsQuery(
+                TRAINING_JOB_NAME, query, startTime, endTime, 20);
+        logService.printInsightsResults(results);
+    }
+
+    /**
+     * 示例：判断训练作业是否存在 ERROR 日志
+     *
+     * 使用 Logs Insights 查询包含 ERROR 关键字的日志（不区分大小写），
+     * 返回 boolean 值，适合在自动化流程中快速判断训练是否出错。
+     */
+    @Test
+    void testHasTrainingErrors() {
+        Instant endTime = Instant.now();
+        Instant startTime = endTime.minus(Duration.ofHours(24));
+
+        boolean hasErrors = logService.hasTrainingErrors(TRAINING_JOB_NAME, startTime, endTime);
+        System.out.println("训练作业是否存在错误: " + (hasErrors ? "是" : "否"));
+    }
+
+    /**
+     * 示例：判断推理端点是否存在 ERROR 日志
+     *
+     * 与训练作业类似，查询端点日志组中是否包含 ERROR 关键字。
+     * 适合部署后的健康检查或定期巡检。
+     */
+    @Test
+    void testHasEndpointErrors() {
+        Instant endTime = Instant.now();
+        Instant startTime = endTime.minus(Duration.ofHours(24));
+
+        boolean hasErrors = logService.hasEndpointErrors(ENDPOINT_NAME, startTime, endTime);
+        System.out.println("端点是否存在错误: " + (hasErrors ? "是" : "否"));
+    }
+
+    /**
+     * 示例：统计训练作业的错误数量
+     *
+     * 使用 Logs Insights stats count() 聚合查询，
+     * 返回指定时间范围内 ERROR 日志的总条数。
+     */
+    @Test
+    void testCountTrainingErrors() {
+        Instant endTime = Instant.now();
+        Instant startTime = endTime.minus(Duration.ofHours(24));
+
+        long errorCount = logService.countTrainingErrors(TRAINING_JOB_NAME, startTime, endTime);
+        System.out.println("错误日志总数: " + errorCount);
+    }
+
+    /**
+     * 示例：获取训练作业的 ERROR 日志详情
+     *
+     * 返回包含 ERROR 关键字的日志详情，包括时间戳、消息内容和日志流名称，
+     * 按时间倒序排列，便于快速定位最近的错误。
+     */
+    @Test
+    void testGetTrainingErrorDetails() {
+        Instant endTime = Instant.now();
+        Instant startTime = endTime.minus(Duration.ofHours(24));
+
+        var errors = logService.getTrainingErrorDetails(TRAINING_JOB_NAME, startTime, endTime, 10);
+        logService.printInsightsResults(errors);
+    }
+
+    /**
+     * 示例：训练作业错误诊断报告
+     *
+     * 综合使用 Logs Insights 查询，输出错误数量和错误详情，
+     * 一次调用即可完成完整的错误诊断。
+     */
+    @Test
+    void testTrainingErrorDiagnostics() {
+        Instant endTime = Instant.now();
+        Instant startTime = endTime.minus(Duration.ofHours(24));
+
+        logService.printTrainingErrorDiagnostics(TRAINING_JOB_NAME, startTime, endTime);
+    }
+
+    /**
+     * 示例：使用 Logs Insights 查询端点推理日志
+     *
+     * 查询端点日志组中的推理请求日志，可用于分析推理延迟、错误模式等。
+     */
+    @Test
+    void testRunEndpointInsightsQuery() {
+        Instant endTime = Instant.now();
+        Instant startTime = endTime.minus(Duration.ofHours(24));
+
+        // 查询端点最近的错误日志，按时间倒序
+        String query = "fields @timestamp, @message "
+                + "| filter @message like /(?i)(ERROR|Exception|Traceback)/ "
+                + "| sort @timestamp desc "
+                + "| limit 20";
+
+        var results = logService.runEndpointInsightsQuery(
+                ENDPOINT_NAME, query, startTime, endTime, 20);
+        logService.printInsightsResults(results);
+    }
+
     // ==================== 七、端点推理调用 ====================
     // 底层 API: SageMaker Runtime InvokeEndpoint
     // 端点必须处于 InService 状态才能接受推理请求

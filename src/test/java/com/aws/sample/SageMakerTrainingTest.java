@@ -194,6 +194,58 @@ public class SageMakerTrainingTest {
     }
 
     /**
+     * 示例：使用 submit_directory 传入训练脚本和 requirements.txt
+     * 
+     * 将训练代码打包为 sourcedir.tar.gz 上传到 S3，通过 sagemaker_submit_directory 超参数传入。
+     * SageMaker 预置容器会自动解压到 /opt/ml/code/，检测并安装 requirements.txt，
+     * 然后运行 entryPoint 指定的训练脚本。
+     * 
+     * sourcedir.tar.gz 目录结构示例:
+     * ├── train.py              # 训练入口脚本
+     * ├── requirements.txt      # Python 依赖列表
+     * └── utils/                # 其他辅助模块（可选）
+     */
+    @Test
+    void testTrainingWithSubmitDirectory() {
+        String jobName = "pytorch-submitdir-" + System.currentTimeMillis();
+
+        String pytorchImage = imageService.getImageUri("pytorch", "training", "2.0.1", "py310", true);
+        System.out.println("PyTorch 镜像: " + pytorchImage);
+
+        TrainingJobConfig jobConfig = TrainingJobConfig.builder()
+                .jobName(jobName)
+                .roleArn(ROLE_ARN)
+                .trainingImage(pytorchImage)
+                .instanceType("ml.m5.xlarge")
+                .instanceCount(1)
+                .volumeSizeGB(50)
+                .maxRuntimeSeconds(3600)
+                .s3TrainDataUri("s3://" + S3_BUCKET + "/" + S3_PREFIX + "/train/")
+                .s3SubmitDirectory("s3://" + S3_BUCKET + "/" + S3_PREFIX + "/code/sourcedir.tar.gz")
+                .entryPoint("train.py")
+                .s3OutputPath("s3://" + S3_BUCKET + "/" + S3_PREFIX + "/output/")
+                .hyperParameter("epochs", "5")
+                .hyperParameter("batch-size", "32")
+                .build();
+
+        // 验证配置
+        assert jobConfig.getS3SubmitDirectory() != null : "s3SubmitDirectory 不应为空";
+        assert jobConfig.getEntryPoint() != null : "entryPoint 不应为空";
+        assert jobConfig.getS3SubmitDirectory().endsWith(".tar.gz") : "submit_directory 应为 tar.gz 包";
+
+        System.out.println("==================== SubmitDirectory 训练配置 ====================");
+        System.out.println("任务名称: " + jobConfig.getJobName());
+        System.out.println("镜像: " + jobConfig.getTrainingImage());
+        System.out.println("实例类型: " + jobConfig.getInstanceType());
+        System.out.println("训练数据: " + jobConfig.getS3TrainDataUri());
+        System.out.println("代码包路径: " + jobConfig.getS3SubmitDirectory());
+        System.out.println("入口脚本: " + jobConfig.getEntryPoint());
+        System.out.println("输出路径: " + jobConfig.getS3OutputPath());
+        System.out.println("超参数: " + jobConfig.getHyperParameters());
+        System.out.println("=============================================================");
+    }
+
+    /**
      * 示例：列出训练任务
      */
     @Test

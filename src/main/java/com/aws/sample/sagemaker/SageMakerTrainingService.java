@@ -1,11 +1,14 @@
 package com.aws.sample.sagemaker;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.aws.sample.common.AwsConfig;
 import com.aws.sample.sagemaker.model.TrainingJobConfig;
 
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sagemaker.SageMakerClient;
 import software.amazon.awssdk.services.sagemaker.model.AlgorithmSpecification;
 import software.amazon.awssdk.services.sagemaker.model.Channel;
@@ -15,7 +18,6 @@ import software.amazon.awssdk.services.sagemaker.model.DataSource;
 import software.amazon.awssdk.services.sagemaker.model.DescribeTrainingJobRequest;
 import software.amazon.awssdk.services.sagemaker.model.DescribeTrainingJobResponse;
 import software.amazon.awssdk.services.sagemaker.model.ListTrainingJobsRequest;
-import software.amazon.awssdk.services.sagemaker.model.ListTrainingJobsResponse;
 import software.amazon.awssdk.services.sagemaker.model.OutputDataConfig;
 import software.amazon.awssdk.services.sagemaker.model.ResourceConfig;
 import software.amazon.awssdk.services.sagemaker.model.S3DataDistribution;
@@ -34,45 +36,43 @@ import software.amazon.awssdk.services.sagemaker.model.VpcConfig;
 /**
  * SageMaker 训练服务
  *
- * 提供 SageMaker 训练作业的全生命周期管理，底层调用 SageMaker API。
- *
- * 主要功能:
- * - 创建训练作业（CreateTrainingJob API）
- * - 查询训练状态和详情（DescribeTrainingJob API）
- * - 等待训练完成（轮询 DescribeTrainingJob）
- * - 停止训练作业（StopTrainingJob API）
- * - 列出训练作业（ListTrainingJobs API）
- * - 获取模型输出路径（训练完成后的 model.tar.gz 路径）
+ * 提供训练作业的全生命周期管理：创建、查询、等待、停止、列出。
  *
  * 训练状态流转:
  * InProgress → Completed（成功）/ Failed（失败）/ Stopping → Stopped（手动停止）
  *
  * 使用示例:
  * <pre>
- * AwsConfig config = new AwsConfig();
- * SageMakerTrainingService trainingService = new SageMakerTrainingService(config);
+ * // 方式一：通过 AwsConfig（读取 application.properties 区域）
+ * SageMakerTrainingService service = new SageMakerTrainingService(new AwsConfig());
+ *
+ * // 方式二：指定区域（跨区域场景）
+ * SageMakerTrainingService service = new SageMakerTrainingService(Region.US_EAST_1);
  *
  * // 创建训练作业
  * TrainingJobConfig jobConfig = TrainingJobConfig.builder()
  *     .jobName("my-training-job")
  *     .roleArn("arn:aws:iam::123456789012:role/SageMakerRole")
- *     .trainingImage("763104351884.dkr.ecr.us-east-1.amazonaws.com/pytorch-training:2.0.1-gpu-py310")
+ *     .trainingImage("镜像URI")
  *     .s3TrainDataUri("s3://bucket/train/")
  *     .s3OutputPath("s3://bucket/output/")
+ *     .s3SubmitDirectory("s3://bucket/code/sourcedir.tar.gz")
+ *     .entryPoint("train.py")
  *     .build();
- * trainingService.createTrainingJob(jobConfig);
+ * service.createTrainingJob(jobConfig);
  *
  * // 等待训练完成
- * TrainingJobStatus status = trainingService.waitForTrainingJob("my-training-job", 60);
+ * TrainingJobStatus status = service.waitForTrainingJob("my-training-job", 60);
  * </pre>
  */
 public class SageMakerTrainingService {
 
     private final SageMakerClient sageMakerClient;
-    private final AwsConfig config;
 
+    /**
+     * 通过 AwsConfig 构建（使用配置文件中的区域和凭证）
+     */
     public SageMakerTrainingService(AwsConfig config) {
-        this.config = config;
         this.sageMakerClient = SageMakerClient.builder()
                 .region(config.getRegion())
                 .credentialsProvider(config.getCredentialsProvider())
@@ -80,90 +80,60 @@ public class SageMakerTrainingService {
     }
 
     /**
+     * 指定区域构建（使用默认凭证链，适用于跨区域场景）
+     */
+    public SageMakerTrainingService(Region region) {
+        this.sageMakerClient = SageMakerClient.builder()
+                .region(region)
+                .build();
+    }
+
+    /**
+     * 直接传入 SageMakerClient（用于测试或自定义客户端配置）
+     */
+    public SageMakerTrainingService(SageMakerClient client) {
+        this.sageMakerClient = client;
+    }
+
+    /**
      * 创建训练任务
      *
-     * 底层调用 SageMaker CreateTrainingJob API。
-     * 根据 TrainingJobConfig 构建输入数据通道（train/validation）、资源配置、
-     * 输出配置、停止条件和算法规格，可选配置 VPC 网络隔离。
+     * 根据 TrainingJobConfig 构建输入数据通道、资源配置、输出配置、
+     * 停止条件和算法规格。自动将 s3SubmitDirectory 和 entryPoint
+     * 转换为 sagemaker_submit_directory 和 sagemaker_program 超参数。
      *
-     * 数据输入模式为 FILE（先下载到本地再训练），数据分发类型为 FULLY_REPLICATED
-     * （每个实例获取完整数据副本）。
-     *
-     * @param jobConfig 训练任务配置，包含作业名称、角色、镜像、实例、数据路径、超参数等
+     * @param jobConfig 训练任务配置
      * @return 训练作业 ARN
      */
     public String createTrainingJob(TrainingJobConfig jobConfig) {
         System.out.println("创建训练任务: " + jobConfig.getJobName());
 
-        // 构建输入数据通道
-        List<Channel> inputChannels = new ArrayList<>();
-        
-        // 训练数据通道
-        if (jobConfig.getS3TrainDataUri() != null) {
-            Channel trainChannel = Channel.builder()
-                    .channelName("train")
-                    .dataSource(DataSource.builder()
-                            .s3DataSource(S3DataSource.builder()
-                                    .s3DataType(S3DataType.S3_PREFIX)
-                                    .s3Uri(jobConfig.getS3TrainDataUri())
-                                    .s3DataDistributionType(S3DataDistribution.FULLY_REPLICATED)
-                                    .build())
-                            .build())
-                    .contentType(jobConfig.getInputContentType())
-                    .inputMode(TrainingInputMode.FILE)
-                    .build();
-            inputChannels.add(trainChannel);
-        }
+        // 输入数据通道
+        List<Channel> inputChannels = buildInputChannels(jobConfig);
 
-        // 验证数据通道（可选）
-        if (jobConfig.getS3ValidationDataUri() != null) {
-            Channel validationChannel = Channel.builder()
-                    .channelName("validation")
-                    .dataSource(DataSource.builder()
-                            .s3DataSource(S3DataSource.builder()
-                                    .s3DataType(S3DataType.S3_PREFIX)
-                                    .s3Uri(jobConfig.getS3ValidationDataUri())
-                                    .s3DataDistributionType(S3DataDistribution.FULLY_REPLICATED)
-                                    .build())
-                            .build())
-                    .contentType(jobConfig.getInputContentType())
-                    .inputMode(TrainingInputMode.FILE)
-                    .build();
-            inputChannels.add(validationChannel);
-        }
-
-        // 构建资源配置
-        ResourceConfig resourceConfig = ResourceConfig.builder()
-                .instanceType(TrainingInstanceType.fromValue(jobConfig.getInstanceType()))
-                .instanceCount(jobConfig.getInstanceCount())
-                .volumeSizeInGB(jobConfig.getVolumeSizeGB())
-                .build();
-
-        // 构建输出配置
-        OutputDataConfig outputConfig = OutputDataConfig.builder()
-                .s3OutputPath(jobConfig.getS3OutputPath())
-                .build();
-
-        // 构建停止条件
-        StoppingCondition stoppingCondition = StoppingCondition.builder()
-                .maxRuntimeInSeconds(jobConfig.getMaxRuntimeSeconds())
-                .build();
-
-        // 构建算法规格
-        AlgorithmSpecification algorithmSpec = AlgorithmSpecification.builder()
-                .trainingImage(jobConfig.getTrainingImage())
-                .trainingInputMode(TrainingInputMode.FILE)
-                .build();
+        // 超参数（合并用户超参数 + 代码包配置）
+        Map<String, String> hyperParameters = buildHyperParameters(jobConfig);
 
         // 构建请求
         CreateTrainingJobRequest.Builder requestBuilder = CreateTrainingJobRequest.builder()
                 .trainingJobName(jobConfig.getJobName())
                 .roleArn(jobConfig.getRoleArn())
-                .algorithmSpecification(algorithmSpec)
-                .resourceConfig(resourceConfig)
-                .outputDataConfig(outputConfig)
-                .stoppingCondition(stoppingCondition)
-                .hyperParameters(jobConfig.getHyperParameters());
+                .algorithmSpecification(AlgorithmSpecification.builder()
+                        .trainingImage(jobConfig.getTrainingImage())
+                        .trainingInputMode(TrainingInputMode.FILE)
+                        .build())
+                .resourceConfig(ResourceConfig.builder()
+                        .instanceType(TrainingInstanceType.fromValue(jobConfig.getInstanceType()))
+                        .instanceCount(jobConfig.getInstanceCount())
+                        .volumeSizeInGB(jobConfig.getVolumeSizeGB())
+                        .build())
+                .outputDataConfig(OutputDataConfig.builder()
+                        .s3OutputPath(jobConfig.getS3OutputPath())
+                        .build())
+                .stoppingCondition(StoppingCondition.builder()
+                        .maxRuntimeInSeconds(jobConfig.getMaxRuntimeSeconds())
+                        .build())
+                .hyperParameters(hyperParameters);
 
         if (!inputChannels.isEmpty()) {
             requestBuilder.inputDataConfig(inputChannels);
@@ -171,115 +141,82 @@ public class SageMakerTrainingService {
 
         // VPC 配置（可选）
         if (jobConfig.getSubnetId() != null && jobConfig.getSecurityGroupId() != null) {
-            VpcConfig vpcConfig = VpcConfig.builder()
+            requestBuilder.vpcConfig(VpcConfig.builder()
                     .subnets(jobConfig.getSubnetId())
                     .securityGroupIds(jobConfig.getSecurityGroupId())
-                    .build();
-            requestBuilder.vpcConfig(vpcConfig);
+                    .build());
         }
 
         CreateTrainingJobResponse response = sageMakerClient.createTrainingJob(requestBuilder.build());
-        String trainingJobArn = response.trainingJobArn();
-        System.out.println("训练任务已创建: " + trainingJobArn);
-        return trainingJobArn;
-    }
-
-    /**
-     * 获取训练任务状态
-     *
-     * 底层调用 SageMaker DescribeTrainingJob API，仅返回状态枚举。
-     * 可能的状态值: InProgress、Completed、Failed、Stopping、Stopped
-     *
-     * @param jobName 训练作业名称
-     * @return 训练作业状态枚举
-     */
-    public TrainingJobStatus getTrainingJobStatus(String jobName) {
-        DescribeTrainingJobRequest request = DescribeTrainingJobRequest.builder()
-                .trainingJobName(jobName)
-                .build();
-        DescribeTrainingJobResponse response = sageMakerClient.describeTrainingJob(request);
-        return response.trainingJobStatus();
+        System.out.println("训练任务已创建: " + response.trainingJobArn());
+        return response.trainingJobArn();
     }
 
     /**
      * 获取训练任务详情
      *
-     * 底层调用 SageMaker DescribeTrainingJob API，返回完整的训练作业信息，
-     * 包括状态、创建时间、训练时长、资源配置、模型输出路径、失败原因等。
-     *
      * @param jobName 训练作业名称
-     * @return 训练作业详情响应对象
+     * @return 训练作业详情
      */
     public DescribeTrainingJobResponse describeTrainingJob(String jobName) {
-        DescribeTrainingJobRequest request = DescribeTrainingJobRequest.builder()
-                .trainingJobName(jobName)
-                .build();
-        return sageMakerClient.describeTrainingJob(request);
+        return sageMakerClient.describeTrainingJob(
+                DescribeTrainingJobRequest.builder().trainingJobName(jobName).build());
     }
 
     /**
-     * 等待训练任务完成
+     * 获取训练任务状态
      *
-     * 每 30 秒轮询一次 DescribeTrainingJob API，直到状态变为终态
-     * （Completed/Failed/Stopped）或超过最大等待时间。
+     * @param jobName 训练作业名称
+     * @return 训练作业状态（InProgress/Completed/Failed/Stopping/Stopped）
+     */
+    public TrainingJobStatus getTrainingJobStatus(String jobName) {
+        return describeTrainingJob(jobName).trainingJobStatus();
+    }
+
+    /**
+     * 等待训练任务完成（每 30 秒轮询一次）
      *
      * @param jobName        训练作业名称
-     * @param maxWaitMinutes 最大等待时间（分钟），超时后返回当前状态
+     * @param maxWaitMinutes 最大等待时间（分钟）
      * @return 训练作业最终状态
      * @throws InterruptedException 等待过程中线程被中断
      */
-    public TrainingJobStatus waitForTrainingJob(String jobName, int maxWaitMinutes) 
+    public TrainingJobStatus waitForTrainingJob(String jobName, int maxWaitMinutes)
             throws InterruptedException {
         System.out.println("等待训练任务完成: " + jobName);
-        long startTime = System.currentTimeMillis();
-        long maxWaitMs = maxWaitMinutes * 60 * 1000L;
+        long deadline = System.currentTimeMillis() + maxWaitMinutes * 60_000L;
 
-        while (true) {
+        while (System.currentTimeMillis() < deadline) {
             TrainingJobStatus status = getTrainingJobStatus(jobName);
-            System.out.println("当前状态: " + status);
+            System.out.println("  当前状态: " + status);
 
-            if (status == TrainingJobStatus.COMPLETED ||
-                status == TrainingJobStatus.FAILED ||
-                status == TrainingJobStatus.STOPPED) {
+            if (isTerminalStatus(status)) {
                 return status;
             }
-
-            if (System.currentTimeMillis() - startTime > maxWaitMs) {
-                System.out.println("等待超时");
-                return status;
-            }
-
-            Thread.sleep(30000); // 每30秒检查一次
+            Thread.sleep(30_000);
         }
+        System.out.println("等待超时");
+        return getTrainingJobStatus(jobName);
     }
 
     /**
-     * 停止训练任务
-     *
-     * 底层调用 SageMaker StopTrainingJob API，发送异步停止请求。
-     * 调用后状态变为 Stopping，最终变为 Stopped。
-     * 已产生的训练费用仍会计费，部分训练的模型文件可能不完整。
+     * 停止训练任务（异步，调用后状态变为 Stopping → Stopped）
      *
      * @param jobName 训练作业名称
      */
     public void stopTrainingJob(String jobName) {
         System.out.println("停止训练任务: " + jobName);
-        StopTrainingJobRequest request = StopTrainingJobRequest.builder()
-                .trainingJobName(jobName)
-                .build();
-        sageMakerClient.stopTrainingJob(request);
+        sageMakerClient.stopTrainingJob(
+                StopTrainingJobRequest.builder().trainingJobName(jobName).build());
         System.out.println("已发送停止请求");
     }
 
     /**
-     * 列出训练任务
+     * 列出训练任务（按创建时间降序）
      *
-     * 底层调用 SageMaker ListTrainingJobs API，按创建时间降序排列。
-     * 支持按名称模糊过滤。
-     *
-     * @param nameContains 名称过滤关键字（可为 null，不过滤）
+     * @param nameContains 名称过滤关键字（可为 null）
      * @param maxResults   最大返回数量
-     * @return 训练作业摘要列表，包含名称、状态、创建时间等
+     * @return 训练作业摘要列表
      */
     public List<TrainingJobSummary> listTrainingJobs(String nameContains, int maxResults) {
         ListTrainingJobsRequest.Builder requestBuilder = ListTrainingJobsRequest.builder()
@@ -290,20 +227,14 @@ public class SageMakerTrainingService {
         if (nameContains != null && !nameContains.isEmpty()) {
             requestBuilder.nameContains(nameContains);
         }
-
-        ListTrainingJobsResponse response = sageMakerClient.listTrainingJobs(requestBuilder.build());
-        return response.trainingJobSummaries();
+        return sageMakerClient.listTrainingJobs(requestBuilder.build()).trainingJobSummaries();
     }
 
     /**
-     * 获取训练任务的模型输出路径
-     *
-     * 仅在训练状态为 Completed 时返回模型文件的 S3 路径（model.tar.gz），
-     * 该路径可直接用于 SageMaker 模型部署。
+     * 获取训练完成后的模型输出路径
      *
      * @param jobName 训练作业名称
-     * @return 模型文件 S3 路径（如 s3://bucket/output/job-name/output/model.tar.gz），
-     *         训练未完成时返回 null
+     * @return 模型 S3 路径（如 s3://bucket/output/model.tar.gz），未完成返回 null
      */
     public String getModelArtifactPath(String jobName) {
         DescribeTrainingJobResponse response = describeTrainingJob(jobName);
@@ -314,10 +245,7 @@ public class SageMakerTrainingService {
     }
 
     /**
-     * 打印训练任务详情到控制台
-     *
-     * 格式化输出训练作业的名称、ARN、状态、创建时间、实例配置等信息。
-     * 训练完成时额外显示训练时长和模型输出路径，训练失败时显示失败原因。
+     * 打印训练任务详情
      *
      * @param jobName 训练作业名称
      */
@@ -330,19 +258,69 @@ public class SageMakerTrainingService {
         System.out.println("创建时间: " + job.creationTime());
         System.out.println("实例类型: " + job.resourceConfig().instanceType());
         System.out.println("实例数量: " + job.resourceConfig().instanceCount());
-        
         if (job.trainingJobStatus() == TrainingJobStatus.COMPLETED) {
             System.out.println("训练时长: " + job.trainingTimeInSeconds() + " 秒");
             System.out.println("模型输出: " + job.modelArtifacts().s3ModelArtifacts());
         }
-        
         if (job.trainingJobStatus() == TrainingJobStatus.FAILED) {
             System.out.println("失败原因: " + job.failureReason());
+        }
+        if (job.hasHyperParameters() && !job.hyperParameters().isEmpty()) {
+            System.out.println("超参数: " + job.hyperParameters());
         }
         System.out.println("====================================================");
     }
 
     public void close() {
         sageMakerClient.close();
+    }
+
+    // ===== 私有方法 =====
+
+    /** 构建输入数据通道 */
+    private List<Channel> buildInputChannels(TrainingJobConfig jobConfig) {
+        List<Channel> channels = new ArrayList<>();
+        if (jobConfig.getS3TrainDataUri() != null) {
+            channels.add(buildChannel("train", jobConfig.getS3TrainDataUri(), jobConfig.getInputContentType()));
+        }
+        if (jobConfig.getS3ValidationDataUri() != null) {
+            channels.add(buildChannel("validation", jobConfig.getS3ValidationDataUri(), jobConfig.getInputContentType()));
+        }
+        return channels;
+    }
+
+    /** 构建单个数据通道 */
+    private Channel buildChannel(String name, String s3Uri, String contentType) {
+        return Channel.builder()
+                .channelName(name)
+                .dataSource(DataSource.builder()
+                        .s3DataSource(S3DataSource.builder()
+                                .s3DataType(S3DataType.S3_PREFIX)
+                                .s3Uri(s3Uri)
+                                .s3DataDistributionType(S3DataDistribution.FULLY_REPLICATED)
+                                .build())
+                        .build())
+                .contentType(contentType)
+                .inputMode(TrainingInputMode.FILE)
+                .build();
+    }
+
+    /** 合并用户超参数和代码包配置 */
+    private Map<String, String> buildHyperParameters(TrainingJobConfig jobConfig) {
+        Map<String, String> hp = new HashMap<>(jobConfig.getHyperParameters());
+        if (jobConfig.getS3SubmitDirectory() != null) {
+            hp.put("sagemaker_submit_directory", jobConfig.getS3SubmitDirectory());
+        }
+        if (jobConfig.getEntryPoint() != null) {
+            hp.put("sagemaker_program", jobConfig.getEntryPoint());
+        }
+        return hp;
+    }
+
+    /** 判断是否为终态 */
+    private boolean isTerminalStatus(TrainingJobStatus status) {
+        return status == TrainingJobStatus.COMPLETED
+                || status == TrainingJobStatus.FAILED
+                || status == TrainingJobStatus.STOPPED;
     }
 }

@@ -41,6 +41,13 @@ public class TrainingJobConfig {
     // 超参数
     private Map<String, String> hyperParameters;
     
+    // 训练代码包路径（可选，S3 上的 sourcedir.tar.gz，包含训练脚本和 requirements.txt）
+    // 预置容器会自动解压到 /opt/ml/code/ 并安装 requirements.txt
+    private String s3SubmitDirectory;
+    
+    // 训练入口脚本名称（可选，配合 s3SubmitDirectory 使用）
+    private String entryPoint;
+    
     // VPC 配置（可选）
     private String subnetId;
     private String securityGroupId;
@@ -132,6 +139,16 @@ public class TrainingJobConfig {
             return this;
         }
         
+        public Builder s3SubmitDirectory(String s3SubmitDirectory) {
+            config.s3SubmitDirectory = s3SubmitDirectory;
+            return this;
+        }
+        
+        public Builder entryPoint(String entryPoint) {
+            config.entryPoint = entryPoint;
+            return this;
+        }
+        
         public Builder securityGroupId(String securityGroupId) {
             config.securityGroupId = securityGroupId;
             return this;
@@ -166,4 +183,6 @@ public class TrainingJobConfig {
     public Map<String, String> getHyperParameters() { return hyperParameters; }
     public String getSubnetId() { return subnetId; }
     public String getSecurityGroupId() { return securityGroupId; }
+    public String getS3SubmitDirectory() { return s3SubmitDirectory; }
+    public String getEntryPoint() { return entryPoint; }
 }

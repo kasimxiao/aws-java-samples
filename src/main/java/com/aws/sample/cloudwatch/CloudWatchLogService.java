@@ -15,10 +15,16 @@ import software.amazon.awssdk.services.cloudwatchlogs.model.FilterLogEventsRespo
 import software.amazon.awssdk.services.cloudwatchlogs.model.FilteredLogEvent;
 import software.amazon.awssdk.services.cloudwatchlogs.model.GetLogEventsRequest;
 import software.amazon.awssdk.services.cloudwatchlogs.model.GetLogEventsResponse;
+import software.amazon.awssdk.services.cloudwatchlogs.model.GetQueryResultsRequest;
+import software.amazon.awssdk.services.cloudwatchlogs.model.GetQueryResultsResponse;
 import software.amazon.awssdk.services.cloudwatchlogs.model.LogStream;
 import software.amazon.awssdk.services.cloudwatchlogs.model.OrderBy;
 import software.amazon.awssdk.services.cloudwatchlogs.model.OutputLogEvent;
 import software.amazon.awssdk.services.cloudwatchlogs.model.PutRetentionPolicyRequest;
+import software.amazon.awssdk.services.cloudwatchlogs.model.QueryStatus;
+import software.amazon.awssdk.services.cloudwatchlogs.model.ResultField;
+import software.amazon.awssdk.services.cloudwatchlogs.model.StartQueryRequest;
+import software.amazon.awssdk.services.cloudwatchlogs.model.StartQueryResponse;
 
 /**
  * CloudWatch 日志查询服务
@@ -371,6 +377,268 @@ public class CloudWatchLogService {
      */
     public void deleteEndpointLogGroup(String endpointName) {
         deleteLogGroup(ENDPOINT_LOG_GROUP + "/" + endpointName);
+    }
+
+    // ==================== CloudWatch Logs Insights 查询 ====================
+
+    /**
+     * 使用 CloudWatch Logs Insights 执行查询
+     *
+     * 底层调用 CloudWatch Logs StartQuery + GetQueryResults API。
+     * Logs Insights 支持丰富的查询语法，包括 fields、filter、stats、sort、limit 等命令，
+     * 比 FilterLogEvents 更灵活，适合复杂的日志分析场景。
+     *
+     * @param logGroupName 日志组名称
+     * @param queryString  Logs Insights 查询语句（如 "fields @timestamp, @message | filter @message like /ERROR/"）
+     * @param startTime    查询开始时间
+     * @param endTime      查询结束时间
+     * @param limit        最大返回条数（Logs Insights 最大 10000）
+     * @return 查询结果列表，每条结果为一组 ResultField（字段名-值对）
+     */
+    public List<List<ResultField>> runInsightsQuery(String logGroupName,
+                                                     String queryString,
+                                                     Instant startTime,
+                                                     Instant endTime,
+                                                     int limit) {
+        System.out.println("执行 Logs Insights 查询: " + logGroupName);
+        System.out.println("查询语句: " + queryString);
+
+        StartQueryRequest startRequest = StartQueryRequest.builder()
+                .logGroupName(logGroupName)
+                .queryString(queryString)
+                .startTime(startTime.getEpochSecond())
+                .endTime(endTime.getEpochSecond())
+                .limit(limit)
+                .build();
+
+        StartQueryResponse startResponse = logsClient.startQuery(startRequest);
+        String queryId = startResponse.queryId();
+        System.out.println("查询已提交，queryId: " + queryId);
+
+        // 轮询等待查询完成
+        GetQueryResultsResponse resultsResponse;
+        while (true) {
+            GetQueryResultsRequest getRequest = GetQueryResultsRequest.builder()
+                    .queryId(queryId)
+                    .build();
+            resultsResponse = logsClient.getQueryResults(getRequest);
+
+            QueryStatus status = resultsResponse.status();
+            if (status == QueryStatus.COMPLETE || status == QueryStatus.FAILED || status == QueryStatus.CANCELLED) {
+                break;
+            }
+
+            // 查询进行中，等待 1 秒后重试
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Logs Insights 查询被中断", e);
+            }
+        }
+
+        if (resultsResponse.status() != QueryStatus.COMPLETE) {
+            System.out.println("查询未成功完成，状态: " + resultsResponse.status());
+            return new ArrayList<>();
+        }
+
+        List<List<ResultField>> results = resultsResponse.results();
+        System.out.println("查询完成，返回 " + results.size() + " 条结果");
+        return results;
+    }
+
+    /**
+     * 使用 Logs Insights 查询训练作业日志
+     *
+     * @param trainingJobName 训练作业名称（用于 filter 日志流前缀）
+     * @param queryString     Logs Insights 查询语句
+     * @param startTime       查询开始时间
+     * @param endTime         查询结束时间
+     * @param limit           最大返回条数
+     * @return 查询结果列表
+     */
+    public List<List<ResultField>> runTrainingInsightsQuery(String trainingJobName,
+                                                             String queryString,
+                                                             Instant startTime,
+                                                             Instant endTime,
+                                                             int limit) {
+        return runInsightsQuery(TRAINING_LOG_GROUP, queryString, startTime, endTime, limit);
+    }
+
+    /**
+     * 使用 Logs Insights 查询推理端点日志
+     *
+     * @param endpointName 端点名称
+     * @param queryString  Logs Insights 查询语句
+     * @param startTime    查询开始时间
+     * @param endTime      查询结束时间
+     * @param limit        最大返回条数
+     * @return 查询结果列表
+     */
+    public List<List<ResultField>> runEndpointInsightsQuery(String endpointName,
+                                                             String queryString,
+                                                             Instant startTime,
+                                                             Instant endTime,
+                                                             int limit) {
+        return runInsightsQuery(ENDPOINT_LOG_GROUP + "/" + endpointName, queryString, startTime, endTime, limit);
+    }
+
+    /**
+     * 使用 Logs Insights 查询训练作业的 ERROR 日志并判断是否存在错误
+     *
+     * 查询语句使用 filter + stats 统计 ERROR 出现次数，
+     * 同时返回匹配的日志详情，便于快速定位问题。
+     *
+     * @param trainingJobName 训练作业名称
+     * @param startTime       查询开始时间
+     * @param endTime         查询结束时间
+     * @return true 表示存在 ERROR 日志，false 表示无错误
+     */
+    public boolean hasTrainingErrors(String trainingJobName, Instant startTime, Instant endTime) {
+        String query = "fields @timestamp, @message "
+                + "| filter @message like /(?i)ERROR/ "
+                + "| sort @timestamp desc "
+                + "| limit 1";
+
+        List<List<ResultField>> results = runTrainingInsightsQuery(
+                trainingJobName, query, startTime, endTime, 1);
+
+        boolean hasErrors = !results.isEmpty();
+        System.out.println("训练作业 " + trainingJobName + " 是否存在错误: " + (hasErrors ? "是" : "否"));
+        return hasErrors;
+    }
+
+    /**
+     * 使用 Logs Insights 查询推理端点的 ERROR 日志并判断是否存在错误
+     *
+     * @param endpointName 端点名称
+     * @param startTime    查询开始时间
+     * @param endTime      查询结束时间
+     * @return true 表示存在 ERROR 日志，false 表示无错误
+     */
+    public boolean hasEndpointErrors(String endpointName, Instant startTime, Instant endTime) {
+        String query = "fields @timestamp, @message "
+                + "| filter @message like /(?i)ERROR/ "
+                + "| sort @timestamp desc "
+                + "| limit 1";
+
+        List<List<ResultField>> results = runEndpointInsightsQuery(
+                endpointName, query, startTime, endTime, 1);
+
+        boolean hasErrors = !results.isEmpty();
+        System.out.println("端点 " + endpointName + " 是否存在错误: " + (hasErrors ? "是" : "否"));
+        return hasErrors;
+    }
+
+    /**
+     * 使用 Logs Insights 统计训练作业的错误数量
+     *
+     * 使用 stats count() 聚合查询，返回匹配 ERROR 的日志总条数。
+     *
+     * @param trainingJobName 训练作业名称
+     * @param startTime       查询开始时间
+     * @param endTime         查询结束时间
+     * @return 错误日志条数
+     */
+    public long countTrainingErrors(String trainingJobName, Instant startTime, Instant endTime) {
+        String query = "fields @message "
+                + "| filter @message like /(?i)ERROR/ "
+                + "| stats count() as errorCount";
+
+        List<List<ResultField>> results = runTrainingInsightsQuery(
+                trainingJobName, query, startTime, endTime, 1);
+
+        long errorCount = 0;
+        if (!results.isEmpty()) {
+            for (ResultField field : results.get(0)) {
+                if ("errorCount".equals(field.field())) {
+                    errorCount = Long.parseLong(field.value());
+                    break;
+                }
+            }
+        }
+        System.out.println("训练作业 " + trainingJobName + " 错误数量: " + errorCount);
+        return errorCount;
+    }
+
+    /**
+     * 使用 Logs Insights 获取训练作业的 ERROR 日志详情
+     *
+     * 返回包含 ERROR 关键字的日志，按时间倒序排列，
+     * 每条结果包含 @timestamp、@message、@logStream 字段。
+     *
+     * @param trainingJobName 训练作业名称
+     * @param startTime       查询开始时间
+     * @param endTime         查询结束时间
+     * @param limit           最大返回条数
+     * @return 查询结果列表
+     */
+    public List<List<ResultField>> getTrainingErrorDetails(String trainingJobName,
+                                                            Instant startTime,
+                                                            Instant endTime,
+                                                            int limit) {
+        String query = "fields @timestamp, @message, @logStream "
+                + "| filter @message like /(?i)ERROR/ "
+                + "| sort @timestamp desc "
+                + "| limit " + limit;
+
+        return runTrainingInsightsQuery(trainingJobName, query, startTime, endTime, limit);
+    }
+
+    /**
+     * 打印 Logs Insights 查询结果到控制台
+     *
+     * @param results 查询结果列表
+     */
+    public void printInsightsResults(List<List<ResultField>> results) {
+        System.out.println("==================== Logs Insights 查询结果 ====================");
+        System.out.println("结果条数: " + results.size());
+        System.out.println();
+
+        for (int i = 0; i < results.size(); i++) {
+            System.out.println("--- 第 " + (i + 1) + " 条 ---");
+            for (ResultField field : results.get(i)) {
+                // 跳过内部指针字段
+                if (!"@ptr".equals(field.field())) {
+                    System.out.println("  " + field.field() + ": " + field.value());
+                }
+            }
+        }
+        System.out.println("================================================================");
+    }
+
+    /**
+     * 打印训练作业错误诊断报告
+     *
+     * 综合使用 Logs Insights 查询，输出错误数量、错误详情，
+     * 帮助快速判断训练作业是否正常。
+     *
+     * @param trainingJobName 训练作业名称
+     * @param startTime       查询开始时间
+     * @param endTime         查询结束时间
+     */
+    public void printTrainingErrorDiagnostics(String trainingJobName, Instant startTime, Instant endTime) {
+        System.out.println("==================== 训练作业错误诊断 ====================");
+        System.out.println("作业名称: " + trainingJobName);
+        System.out.println("时间范围: " + startTime + " ~ " + endTime);
+        System.out.println();
+
+        // 统计错误数量
+        long errorCount = countTrainingErrors(trainingJobName, startTime, endTime);
+        System.out.println("错误总数: " + errorCount);
+
+        if (errorCount == 0) {
+            System.out.println("诊断结果: 未发现错误日志，训练作业运行正常");
+        } else {
+            System.out.println("诊断结果: 发现 " + errorCount + " 条错误日志，请检查以下详情");
+            System.out.println();
+
+            // 获取错误详情（最多 20 条）
+            List<List<ResultField>> errors = getTrainingErrorDetails(
+                    trainingJobName, startTime, endTime, 20);
+            printInsightsResults(errors);
+        }
+        System.out.println("============================================================");
     }
 
     public void close() {
