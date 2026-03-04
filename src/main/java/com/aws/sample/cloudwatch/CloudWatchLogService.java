@@ -641,6 +641,111 @@ public class CloudWatchLogService {
         System.out.println("============================================================");
     }
 
+    // ==================== SSM 脚本执行日志监控 ====================
+
+    /**
+     * 通过 CloudWatch Logs 判断 SSM 脚本执行是否成功
+     *
+     * 查询 SsmService.executeScriptWithLogs 输出到 CloudWatch Logs 的日志，
+     * 通过匹配脚本执行结束时输出的标记来判断执行结果:
+     * - "执行结果: 成功" 表示脚本正常退出（exit code 0）
+     * - "ERROR: 执行结果: 失败" 表示脚本异常退出
+     *
+     * @param logGroupName CloudWatch Logs 日志组名称（与 executeScriptWithLogs 中传入的一致）
+     * @param startTime    查询开始时间
+     * @param endTime      查询结束时间
+     * @return true 表示执行成功，false 表示执行失败或未找到结果日志
+     */
+    public boolean isSsmScriptSuccess(String logGroupName, Instant startTime, Instant endTime) {
+        System.out.println("查询 SSM 脚本执行结果: " + logGroupName);
+
+        // 先查是否有成功标记
+        String successQuery = "fields @timestamp, @message "
+                + "| filter @message like /执行结果: 成功/ "
+                + "| sort @timestamp desc "
+                + "| limit 1";
+
+        List<List<ResultField>> successResults = runInsightsQuery(
+                logGroupName, successQuery, startTime, endTime, 1);
+
+        if (!successResults.isEmpty()) {
+            System.out.println("SSM 脚本执行结果: 成功");
+            return true;
+        }
+
+        // 查是否有失败标记
+        String failQuery = "fields @timestamp, @message "
+                + "| filter @message like /ERROR: 执行结果: 失败/ "
+                + "| sort @timestamp desc "
+                + "| limit 1";
+
+        List<List<ResultField>> failResults = runInsightsQuery(
+                logGroupName, failQuery, startTime, endTime, 1);
+
+        if (!failResults.isEmpty()) {
+            System.out.println("SSM 脚本执行结果: 失败");
+        } else {
+            System.out.println("SSM 脚本执行结果: 未找到执行结果日志（可能仍在运行中）");
+        }
+        return false;
+    }
+
+    /**
+     * 通过 CloudWatch Logs 获取 SSM 脚本执行的完整诊断报告
+     *
+     * 综合查询脚本执行状态、ERROR 日志数量和错误详情，
+     * 一次调用输出完整的执行诊断信息。
+     *
+     * @param logGroupName CloudWatch Logs 日志组名称
+     * @param startTime    查询开始时间
+     * @param endTime      查询结束时间
+     */
+    public void printSsmScriptDiagnostics(String logGroupName, Instant startTime, Instant endTime) {
+        System.out.println("==================== SSM 脚本执行诊断 ====================");
+        System.out.println("日志组: " + logGroupName);
+        System.out.println("时间范围: " + startTime + " ~ " + endTime);
+        System.out.println();
+
+        // 1. 判断执行结果
+        boolean success = isSsmScriptSuccess(logGroupName, startTime, endTime);
+        System.out.println("执行状态: " + (success ? "成功" : "失败或未完成"));
+        System.out.println();
+
+        // 2. 统计 ERROR 日志数量
+        String countQuery = "fields @message "
+                + "| filter @message like /(?i)ERROR/ "
+                + "| stats count() as errorCount";
+
+        List<List<ResultField>> countResults = runInsightsQuery(
+                logGroupName, countQuery, startTime, endTime, 1);
+
+        long errorCount = 0;
+        if (!countResults.isEmpty()) {
+            for (ResultField field : countResults.get(0)) {
+                if ("errorCount".equals(field.field())) {
+                    errorCount = Long.parseLong(field.value());
+                    break;
+                }
+            }
+        }
+        System.out.println("ERROR 日志数量: " + errorCount);
+
+        // 3. 如果有错误，输出错误详情
+        if (errorCount > 0) {
+            System.out.println();
+            String detailQuery = "fields @timestamp, @message "
+                    + "| filter @message like /(?i)ERROR/ "
+                    + "| sort @timestamp desc "
+                    + "| limit 20";
+
+            List<List<ResultField>> errors = runInsightsQuery(
+                    logGroupName, detailQuery, startTime, endTime, 20);
+            printInsightsResults(errors);
+        }
+
+        System.out.println("============================================================");
+    }
+
     public void close() {
         logsClient.close();
     }
