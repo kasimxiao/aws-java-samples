@@ -71,6 +71,150 @@ public class CloudWatchLogService {
                 .build();
     }
 
+    // ==================== 通用日志查询 ====================
+
+    /**
+     * 查询指定日志组的日志流
+     *
+     * 底层调用 CloudWatch Logs DescribeLogStreams API，按最后事件时间降序排列。
+     * 适用于任意日志组（SSM 命令日志、自定义应用日志等）。
+     *
+     * @param logGroupName       日志组名称（如 "/ssm/script-execution"、"/aws/lambda/my-function"）
+     * @param logStreamNamePrefix 日志流名称前缀过滤，可为 null 表示不过滤
+     * @return 日志流列表，按最后事件时间降序排列
+     */
+    public List<LogStream> getLogStreams(String logGroupName, String logStreamNamePrefix) {
+        System.out.println("查询日志流: " + logGroupName
+                + (logStreamNamePrefix != null ? ", 前缀: " + logStreamNamePrefix : ""));
+
+        DescribeLogStreamsRequest.Builder requestBuilder = DescribeLogStreamsRequest.builder()
+                .logGroupName(logGroupName)
+                .orderBy(OrderBy.LAST_EVENT_TIME)
+                .descending(true);
+
+        if (logStreamNamePrefix != null && !logStreamNamePrefix.isEmpty()) {
+            requestBuilder.logStreamNamePrefix(logStreamNamePrefix);
+        }
+
+        DescribeLogStreamsResponse response = logsClient.describeLogStreams(requestBuilder.build());
+        List<LogStream> streams = response.logStreams();
+        System.out.println("找到 " + streams.size() + " 个日志流");
+        return streams;
+    }
+
+    /**
+     * 获取指定日志组和日志流的日志事件
+     *
+     * 底层调用 CloudWatch Logs GetLogEvents API，从日志流头部开始读取。
+     *
+     * @param logGroupName  日志组名称
+     * @param logStreamName 日志流名称
+     * @param limit         最大返回条数
+     * @return 日志事件列表，按时间正序排列
+     */
+    public List<OutputLogEvent> getLogEvents(String logGroupName, String logStreamName, int limit) {
+        GetLogEventsRequest request = GetLogEventsRequest.builder()
+                .logGroupName(logGroupName)
+                .logStreamName(logStreamName)
+                .startFromHead(true)
+                .limit(limit)
+                .build();
+
+        GetLogEventsResponse response = logsClient.getLogEvents(request);
+        return response.events();
+    }
+
+    /**
+     * 获取指定日志组的全部日志（合并所有日志流）
+     *
+     * 遍历日志组下所有日志流（或按前缀过滤），合并日志事件后按时间戳排序。
+     *
+     * @param logGroupName       日志组名称
+     * @param logStreamNamePrefix 日志流名称前缀过滤，可为 null
+     * @param limit              每个日志流的最大返回条数
+     * @return 所有日志事件，按时间戳正序排列
+     */
+    public List<OutputLogEvent> getLogs(String logGroupName, String logStreamNamePrefix, int limit) {
+        System.out.println("获取日志: " + logGroupName);
+
+        List<LogStream> streams = getLogStreams(logGroupName, logStreamNamePrefix);
+        List<OutputLogEvent> allEvents = new ArrayList<>();
+
+        for (LogStream stream : streams) {
+            List<OutputLogEvent> events = getLogEvents(logGroupName, stream.logStreamName(), limit);
+            allEvents.addAll(events);
+        }
+
+        allEvents.sort((a, b) -> Long.compare(a.timestamp(), b.timestamp()));
+        System.out.println("共获取 " + allEvents.size() + " 条日志");
+        return allEvents;
+    }
+
+    /**
+     * 按关键字和时间范围过滤指定日志组的日志
+     *
+     * 底层调用 CloudWatch Logs FilterLogEvents API，适用于任意日志组。
+     *
+     * @param logGroupName       日志组名称
+     * @param logStreamNamePrefix 日志流名称前缀过滤，可为 null
+     * @param filterPattern      过滤模式（如 "ERROR"、"Exception"），大小写敏感
+     * @param startTime          开始时间，可为 null
+     * @param endTime            结束时间，可为 null
+     * @param limit              最大返回条数
+     * @return 过滤后的日志事件列表
+     */
+    public List<FilteredLogEvent> filterLogs(String logGroupName,
+                                              String logStreamNamePrefix,
+                                              String filterPattern,
+                                              Instant startTime,
+                                              Instant endTime,
+                                              int limit) {
+        System.out.println("过滤日志: " + logGroupName + ", 模式: " + filterPattern);
+
+        FilterLogEventsRequest.Builder requestBuilder = FilterLogEventsRequest.builder()
+                .logGroupName(logGroupName)
+                .filterPattern(filterPattern)
+                .limit(limit);
+
+        if (logStreamNamePrefix != null && !logStreamNamePrefix.isEmpty()) {
+            requestBuilder.logStreamNamePrefix(logStreamNamePrefix);
+        }
+        if (startTime != null) {
+            requestBuilder.startTime(startTime.toEpochMilli());
+        }
+        if (endTime != null) {
+            requestBuilder.endTime(endTime.toEpochMilli());
+        }
+
+        FilterLogEventsResponse response = logsClient.filterLogEvents(requestBuilder.build());
+        List<FilteredLogEvent> events = response.events();
+        System.out.println("过滤后获取 " + events.size() + " 条日志");
+        return events;
+    }
+
+    /**
+     * 打印指定日志组的日志到控制台
+     *
+     * @param logGroupName       日志组名称
+     * @param logStreamNamePrefix 日志流名称前缀过滤，可为 null
+     * @param limit              每个日志流的最大返回条数
+     */
+    public void printLogs(String logGroupName, String logStreamNamePrefix, int limit) {
+        List<OutputLogEvent> events = getLogs(logGroupName, logStreamNamePrefix, limit);
+        System.out.println("==================== 日志输出 ====================");
+        System.out.println("日志组: " + logGroupName);
+        System.out.println("日志条数: " + events.size());
+        System.out.println();
+
+        for (OutputLogEvent event : events) {
+            Instant timestamp = Instant.ofEpochMilli(event.timestamp());
+            System.out.println("[" + timestamp + "] " + event.message());
+        }
+        System.out.println("==================================================");
+    }
+
+    // ==================== SageMaker 训练作业日志查询 ====================
+
     /**
      * 获取训练作业的所有日志流
      *
@@ -83,41 +227,18 @@ public class CloudWatchLogService {
      * @return 日志流列表，按最后事件时间降序排列
      */
     public List<LogStream> getTrainingJobLogStreams(String trainingJobName) {
-        System.out.println("查询训练作业日志流: " + trainingJobName);
-
-        DescribeLogStreamsRequest request = DescribeLogStreamsRequest.builder()
-                .logGroupName(TRAINING_LOG_GROUP)
-                .logStreamNamePrefix(trainingJobName)
-                .orderBy(OrderBy.LAST_EVENT_TIME)
-                .descending(true)
-                .build();
-
-        DescribeLogStreamsResponse response = logsClient.describeLogStreams(request);
-        List<LogStream> streams = response.logStreams();
-        System.out.println("找到 " + streams.size() + " 个日志流");
-        return streams;
+        return getLogStreams(TRAINING_LOG_GROUP, trainingJobName);
     }
 
     /**
-     * 获取指定日志流的日志事件
-     *
-     * 底层调用 CloudWatch Logs GetLogEvents API，从日志流头部开始读取。
-     * 返回的日志事件包含时间戳（Unix 毫秒）和消息内容。
+     * 获取训练作业指定日志流的日志事件
      *
      * @param logStreamName 日志流名称（如 "my-job/algo-1-1704067200"）
-     * @param limit         最大返回条数，CloudWatch Logs 单次最多返回 10000 条
+     * @param limit         最大返回条数
      * @return 日志事件列表，按时间正序排列
      */
-    public List<OutputLogEvent> getLogEvents(String logStreamName, int limit) {
-        GetLogEventsRequest request = GetLogEventsRequest.builder()
-                .logGroupName(TRAINING_LOG_GROUP)
-                .logStreamName(logStreamName)
-                .startFromHead(true)
-                .limit(limit)
-                .build();
-
-        GetLogEventsResponse response = logsClient.getLogEvents(request);
-        return response.events();
+    public List<OutputLogEvent> getTrainingLogEvents(String logStreamName, int limit) {
+        return getLogEvents(TRAINING_LOG_GROUP, logStreamName, limit);
     }
 
     /**
@@ -131,20 +252,7 @@ public class CloudWatchLogService {
      * @return 所有日志事件，按时间戳正序排列
      */
     public List<OutputLogEvent> getTrainingJobLogs(String trainingJobName, int limit) {
-        System.out.println("获取训练作业日志: " + trainingJobName);
-
-        List<LogStream> streams = getTrainingJobLogStreams(trainingJobName);
-        List<OutputLogEvent> allEvents = new ArrayList<>();
-
-        for (LogStream stream : streams) {
-            List<OutputLogEvent> events = getLogEvents(stream.logStreamName(), limit);
-            allEvents.addAll(events);
-        }
-
-        // 按时间排序
-        allEvents.sort((a, b) -> Long.compare(a.timestamp(), b.timestamp()));
-        System.out.println("共获取 " + allEvents.size() + " 条日志");
-        return allEvents;
+        return getLogs(TRAINING_LOG_GROUP, trainingJobName, limit);
     }
 
     /**
