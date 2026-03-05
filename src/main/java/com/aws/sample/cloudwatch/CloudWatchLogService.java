@@ -213,6 +213,20 @@ public class CloudWatchLogService {
         System.out.println("==================================================");
     }
 
+    /**
+     * 打印过滤后的日志事件列表
+     *
+     * @param events 过滤后的日志事件列表
+     */
+    public void printFilteredEvents(List<FilteredLogEvent> events) {
+        System.out.println("日志条数: " + events.size());
+        System.out.println();
+        for (FilteredLogEvent event : events) {
+            Instant timestamp = Instant.ofEpochMilli(event.timestamp());
+            System.out.println("[" + timestamp + "] " + event.message());
+        }
+    }
+
     // ==================== SageMaker 训练作业日志查询 ====================
 
     /**
@@ -258,15 +272,11 @@ public class CloudWatchLogService {
     /**
      * 按关键字和时间范围过滤训练作业日志
      *
-     * 底层调用 CloudWatch Logs FilterLogEvents API，支持文本模式匹配和时间范围过滤。
-     * filterPattern 支持简单文本匹配（如 "ERROR"）和 CloudWatch Logs 过滤语法
-     * （如 "[ip, user, ...]" 格式的空格分隔过滤）。
-     *
      * @param trainingJobName 训练作业名称，用作日志流名称前缀
      * @param filterPattern   过滤模式（如 "Loss"、"ERROR"、"Accuracy"），大小写敏感
-     * @param startTime       开始时间（可为 null，不限制开始时间）
-     * @param endTime         结束时间（可为 null，不限制结束时间）
-     * @param limit           最大返回条数，CloudWatch Logs 单次最多返回 10000 条
+     * @param startTime       开始时间（可为 null）
+     * @param endTime         结束时间（可为 null）
+     * @param limit           最大返回条数
      * @return 过滤后的日志事件列表
      */
     public List<FilteredLogEvent> filterTrainingJobLogs(String trainingJobName,
@@ -274,25 +284,7 @@ public class CloudWatchLogService {
                                                          Instant startTime,
                                                          Instant endTime,
                                                          int limit) {
-        System.out.println("过滤训练作业日志: " + trainingJobName + ", 模式: " + filterPattern);
-
-        FilterLogEventsRequest.Builder requestBuilder = FilterLogEventsRequest.builder()
-                .logGroupName(TRAINING_LOG_GROUP)
-                .logStreamNamePrefix(trainingJobName)
-                .filterPattern(filterPattern)
-                .limit(limit);
-
-        if (startTime != null) {
-            requestBuilder.startTime(startTime.toEpochMilli());
-        }
-        if (endTime != null) {
-            requestBuilder.endTime(endTime.toEpochMilli());
-        }
-
-        FilterLogEventsResponse response = logsClient.filterLogEvents(requestBuilder.build());
-        List<FilteredLogEvent> events = response.events();
-        System.out.println("过滤后获取 " + events.size() + " 条日志");
-        return events;
+        return filterLogs(TRAINING_LOG_GROUP, trainingJobName, filterPattern, startTime, endTime, limit);
     }
 
     /**
@@ -326,31 +318,15 @@ public class CloudWatchLogService {
     /**
      * 获取推理端点的日志流
      *
-     * 底层调用 CloudWatch Logs DescribeLogStreams API。
-     * 端点日志组格式为 /aws/sagemaker/Endpoints/[endpoint-name]，
-     * 每个推理实例会生成独立的日志流。
-     *
      * @param endpointName 端点名称
      * @return 日志流列表，按最后事件时间降序排列
      */
     public List<LogStream> getEndpointLogStreams(String endpointName) {
-        System.out.println("查询端点日志流: " + endpointName);
-
-        DescribeLogStreamsRequest request = DescribeLogStreamsRequest.builder()
-                .logGroupName(ENDPOINT_LOG_GROUP + "/" + endpointName)
-                .orderBy(OrderBy.LAST_EVENT_TIME)
-                .descending(true)
-                .build();
-
-        DescribeLogStreamsResponse response = logsClient.describeLogStreams(request);
-        return response.logStreams();
+        return getLogStreams(ENDPOINT_LOG_GROUP + "/" + endpointName, null);
     }
 
     /**
      * 按关键字过滤推理端点日志
-     *
-     * 底层调用 CloudWatch Logs FilterLogEvents API。
-     * 可用于过滤推理错误、模型加载日志、自定义日志等。
      *
      * @param endpointName  端点名称
      * @param filterPattern 过滤模式（如 "ERROR"、"model"、"prediction"），大小写敏感
@@ -360,39 +336,17 @@ public class CloudWatchLogService {
     public List<FilteredLogEvent> filterEndpointLogs(String endpointName,
                                                       String filterPattern,
                                                       int limit) {
-        System.out.println("过滤端点日志: " + endpointName + ", 模式: " + filterPattern);
-
-        FilterLogEventsRequest request = FilterLogEventsRequest.builder()
-                .logGroupName(ENDPOINT_LOG_GROUP + "/" + endpointName)
-                .filterPattern(filterPattern)
-                .limit(limit)
-                .build();
-
-        FilterLogEventsResponse response = logsClient.filterLogEvents(request);
-        return response.events();
+        return filterLogs(ENDPOINT_LOG_GROUP + "/" + endpointName, null, filterPattern, null, null, limit);
     }
 
     /**
      * 打印训练作业日志到控制台
      *
-     * 获取所有日志流的日志并按时间排序后格式化输出，
-     * 每条日志显示时间戳和消息内容。
-     *
      * @param trainingJobName 训练作业名称
      * @param limit           每个日志流的最大返回条数
      */
     public void printTrainingJobLogs(String trainingJobName, int limit) {
-        List<OutputLogEvent> events = getTrainingJobLogs(trainingJobName, limit);
-        System.out.println("==================== 训练作业日志 ====================");
-        System.out.println("作业名称: " + trainingJobName);
-        System.out.println("日志条数: " + events.size());
-        System.out.println();
-
-        for (OutputLogEvent event : events) {
-            Instant timestamp = Instant.ofEpochMilli(event.timestamp());
-            System.out.println("[" + timestamp + "] " + event.message());
-        }
-        System.out.println("====================================================");
+        printLogs(TRAINING_LOG_GROUP, trainingJobName, limit);
     }
 
     /**
@@ -409,13 +363,7 @@ public class CloudWatchLogService {
         System.out.println("==================== 过滤日志 ====================");
         System.out.println("作业名称: " + trainingJobName);
         System.out.println("过滤模式: " + filterPattern);
-        System.out.println("日志条数: " + events.size());
-        System.out.println();
-
-        for (FilteredLogEvent event : events) {
-            Instant timestamp = Instant.ofEpochMilli(event.timestamp());
-            System.out.println("[" + timestamp + "] " + event.message());
-        }
+        printFilteredEvents(events);
         System.out.println("==================================================");
     }
 
@@ -592,69 +540,49 @@ public class CloudWatchLogService {
     }
 
     /**
-     * 使用 Logs Insights 查询训练作业的 ERROR 日志并判断是否存在错误
+     * 使用 Logs Insights 判断指定日志组是否存在 ERROR 日志
      *
-     * 查询语句使用 filter + stats 统计 ERROR 出现次数，
-     * 同时返回匹配的日志详情，便于快速定位问题。
-     *
-     * @param trainingJobName 训练作业名称
-     * @param startTime       查询开始时间
-     * @param endTime         查询结束时间
-     * @return true 表示存在 ERROR 日志，false 表示无错误
-     */
-    public boolean hasTrainingErrors(String trainingJobName, Instant startTime, Instant endTime) {
-        String query = "fields @timestamp, @message "
-                + "| filter @message like /(?i)ERROR/ "
-                + "| sort @timestamp desc "
-                + "| limit 1";
-
-        List<List<ResultField>> results = runTrainingInsightsQuery(
-                trainingJobName, query, startTime, endTime, 1);
-
-        boolean hasErrors = !results.isEmpty();
-        System.out.println("训练作业 " + trainingJobName + " 是否存在错误: " + (hasErrors ? "是" : "否"));
-        return hasErrors;
-    }
-
-    /**
-     * 使用 Logs Insights 查询推理端点的 ERROR 日志并判断是否存在错误
-     *
-     * @param endpointName 端点名称
+     * @param logGroupName 日志组名称
      * @param startTime    查询开始时间
      * @param endTime      查询结束时间
      * @return true 表示存在 ERROR 日志，false 表示无错误
      */
-    public boolean hasEndpointErrors(String endpointName, Instant startTime, Instant endTime) {
+    public boolean hasErrors(String logGroupName, Instant startTime, Instant endTime) {
         String query = "fields @timestamp, @message "
                 + "| filter @message like /(?i)ERROR/ "
                 + "| sort @timestamp desc "
                 + "| limit 1";
 
-        List<List<ResultField>> results = runEndpointInsightsQuery(
-                endpointName, query, startTime, endTime, 1);
-
+        List<List<ResultField>> results = runInsightsQuery(logGroupName, query, startTime, endTime, 1);
         boolean hasErrors = !results.isEmpty();
-        System.out.println("端点 " + endpointName + " 是否存在错误: " + (hasErrors ? "是" : "否"));
+        System.out.println("日志组 " + logGroupName + " 是否存在错误: " + (hasErrors ? "是" : "否"));
         return hasErrors;
     }
 
+    /** 判断训练作业是否存在 ERROR 日志 */
+    public boolean hasTrainingErrors(String trainingJobName, Instant startTime, Instant endTime) {
+        return hasErrors(TRAINING_LOG_GROUP, startTime, endTime);
+    }
+
+    /** 判断推理端点是否存在 ERROR 日志 */
+    public boolean hasEndpointErrors(String endpointName, Instant startTime, Instant endTime) {
+        return hasErrors(ENDPOINT_LOG_GROUP + "/" + endpointName, startTime, endTime);
+    }
+
     /**
-     * 使用 Logs Insights 统计训练作业的错误数量
+     * 使用 Logs Insights 统计指定日志组的错误数量
      *
-     * 使用 stats count() 聚合查询，返回匹配 ERROR 的日志总条数。
-     *
-     * @param trainingJobName 训练作业名称
-     * @param startTime       查询开始时间
-     * @param endTime         查询结束时间
+     * @param logGroupName 日志组名称
+     * @param startTime    查询开始时间
+     * @param endTime      查询结束时间
      * @return 错误日志条数
      */
-    public long countTrainingErrors(String trainingJobName, Instant startTime, Instant endTime) {
+    public long countErrors(String logGroupName, Instant startTime, Instant endTime) {
         String query = "fields @message "
                 + "| filter @message like /(?i)ERROR/ "
                 + "| stats count() as errorCount";
 
-        List<List<ResultField>> results = runTrainingInsightsQuery(
-                trainingJobName, query, startTime, endTime, 1);
+        List<List<ResultField>> results = runInsightsQuery(logGroupName, query, startTime, endTime, 1);
 
         long errorCount = 0;
         if (!results.isEmpty()) {
@@ -665,32 +593,42 @@ public class CloudWatchLogService {
                 }
             }
         }
-        System.out.println("训练作业 " + trainingJobName + " 错误数量: " + errorCount);
+        System.out.println("日志组 " + logGroupName + " 错误数量: " + errorCount);
         return errorCount;
     }
 
+    /** 统计训练作业的错误数量 */
+    public long countTrainingErrors(String trainingJobName, Instant startTime, Instant endTime) {
+        return countErrors(TRAINING_LOG_GROUP, startTime, endTime);
+    }
+
     /**
-     * 使用 Logs Insights 获取训练作业的 ERROR 日志详情
+     * 使用 Logs Insights 获取指定日志组的 ERROR 日志详情
      *
-     * 返回包含 ERROR 关键字的日志，按时间倒序排列，
-     * 每条结果包含 @timestamp、@message、@logStream 字段。
-     *
-     * @param trainingJobName 训练作业名称
-     * @param startTime       查询开始时间
-     * @param endTime         查询结束时间
-     * @param limit           最大返回条数
+     * @param logGroupName 日志组名称
+     * @param startTime    查询开始时间
+     * @param endTime      查询结束时间
+     * @param limit        最大返回条数
      * @return 查询结果列表
      */
-    public List<List<ResultField>> getTrainingErrorDetails(String trainingJobName,
-                                                            Instant startTime,
-                                                            Instant endTime,
-                                                            int limit) {
+    public List<List<ResultField>> getErrorDetails(String logGroupName,
+                                                    Instant startTime,
+                                                    Instant endTime,
+                                                    int limit) {
         String query = "fields @timestamp, @message, @logStream "
                 + "| filter @message like /(?i)ERROR/ "
                 + "| sort @timestamp desc "
                 + "| limit " + limit;
 
-        return runTrainingInsightsQuery(trainingJobName, query, startTime, endTime, limit);
+        return runInsightsQuery(logGroupName, query, startTime, endTime, limit);
+    }
+
+    /** 获取训练作业的 ERROR 日志详情 */
+    public List<List<ResultField>> getTrainingErrorDetails(String trainingJobName,
+                                                            Instant startTime,
+                                                            Instant endTime,
+                                                            int limit) {
+        return getErrorDetails(TRAINING_LOG_GROUP, startTime, endTime, limit);
     }
 
     /**
@@ -716,37 +654,37 @@ public class CloudWatchLogService {
     }
 
     /**
-     * 打印训练作业错误诊断报告
+     * 打印指定日志组的错误诊断报告
      *
-     * 综合使用 Logs Insights 查询，输出错误数量、错误详情，
-     * 帮助快速判断训练作业是否正常。
+     * 综合使用 Logs Insights 查询，输出错误数量和错误详情。
      *
-     * @param trainingJobName 训练作业名称
-     * @param startTime       查询开始时间
-     * @param endTime         查询结束时间
+     * @param logGroupName 日志组名称
+     * @param startTime    查询开始时间
+     * @param endTime      查询结束时间
      */
-    public void printTrainingErrorDiagnostics(String trainingJobName, Instant startTime, Instant endTime) {
-        System.out.println("==================== 训练作业错误诊断 ====================");
-        System.out.println("作业名称: " + trainingJobName);
+    public void printErrorDiagnostics(String logGroupName, Instant startTime, Instant endTime) {
+        System.out.println("==================== 错误诊断报告 ====================");
+        System.out.println("日志组: " + logGroupName);
         System.out.println("时间范围: " + startTime + " ~ " + endTime);
         System.out.println();
 
-        // 统计错误数量
-        long errorCount = countTrainingErrors(trainingJobName, startTime, endTime);
+        long errorCount = countErrors(logGroupName, startTime, endTime);
         System.out.println("错误总数: " + errorCount);
 
         if (errorCount == 0) {
-            System.out.println("诊断结果: 未发现错误日志，训练作业运行正常");
+            System.out.println("诊断结果: 未发现错误日志，运行正常");
         } else {
             System.out.println("诊断结果: 发现 " + errorCount + " 条错误日志，请检查以下详情");
             System.out.println();
-
-            // 获取错误详情（最多 20 条）
-            List<List<ResultField>> errors = getTrainingErrorDetails(
-                    trainingJobName, startTime, endTime, 20);
+            List<List<ResultField>> errors = getErrorDetails(logGroupName, startTime, endTime, 20);
             printInsightsResults(errors);
         }
         System.out.println("============================================================");
+    }
+
+    /** 打印训练作业错误诊断报告 */
+    public void printTrainingErrorDiagnostics(String trainingJobName, Instant startTime, Instant endTime) {
+        printErrorDiagnostics(TRAINING_LOG_GROUP, startTime, endTime);
     }
 
     // ==================== SSM 脚本执行日志监控 ====================
@@ -819,35 +757,13 @@ public class CloudWatchLogService {
         System.out.println("执行状态: " + (success ? "成功" : "失败或未完成"));
         System.out.println();
 
-        // 2. 统计 ERROR 日志数量
-        String countQuery = "fields @message "
-                + "| filter @message like /(?i)ERROR/ "
-                + "| stats count() as errorCount";
-
-        List<List<ResultField>> countResults = runInsightsQuery(
-                logGroupName, countQuery, startTime, endTime, 1);
-
-        long errorCount = 0;
-        if (!countResults.isEmpty()) {
-            for (ResultField field : countResults.get(0)) {
-                if ("errorCount".equals(field.field())) {
-                    errorCount = Long.parseLong(field.value());
-                    break;
-                }
-            }
-        }
+        // 2. 复用通用错误诊断（统计错误数量 + 输出错误详情）
+        long errorCount = countErrors(logGroupName, startTime, endTime);
         System.out.println("ERROR 日志数量: " + errorCount);
 
-        // 3. 如果有错误，输出错误详情
         if (errorCount > 0) {
             System.out.println();
-            String detailQuery = "fields @timestamp, @message "
-                    + "| filter @message like /(?i)ERROR/ "
-                    + "| sort @timestamp desc "
-                    + "| limit 20";
-
-            List<List<ResultField>> errors = runInsightsQuery(
-                    logGroupName, detailQuery, startTime, endTime, 20);
+            List<List<ResultField>> errors = getErrorDetails(logGroupName, startTime, endTime, 20);
             printInsightsResults(errors);
         }
 

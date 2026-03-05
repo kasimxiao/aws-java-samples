@@ -832,4 +832,175 @@ public class CloudWatchMonitoringTest {
         System.out.println("13. metricService.createEndpointErrorAlarm(...)                 // 创建错误告警");
         System.out.println("====================================================");
     }
+
+    // ==================== 九、通用日志查询 ====================
+    // 底层 API: CloudWatch Logs DescribeLogStreams / GetLogEvents / FilterLogEvents
+    // 适用于任意日志组（SSM 命令日志、Lambda 日志、自定义应用日志等）
+
+    /** SSM 脚本执行日志组名称，与 SsmService.executeScriptWithLogs 中传入的一致 */
+    private static final String SSM_LOG_GROUP = "/ssm/script-execution";
+
+    /**
+     * 示例：查询任意日志组的日志流
+     *
+     * 底层调用 CloudWatch Logs DescribeLogStreams API，按最后事件时间降序排列。
+     * logStreamNamePrefix 可为 null，表示不过滤。
+     */
+    @Test
+    void testGetLogStreams() {
+        // 查询 SSM 脚本执行日志组的所有日志流
+        List<LogStream> streams = logService.getLogStreams(SSM_LOG_GROUP, null);
+        System.out.println("==================== 日志流列表 ====================");
+        System.out.println("日志组: " + SSM_LOG_GROUP);
+        for (LogStream stream : streams) {
+            System.out.println("日志流: " + stream.logStreamName());
+            System.out.println("  最后事件时间: " + Instant.ofEpochMilli(stream.lastEventTimestamp()));
+            System.out.println();
+        }
+        System.out.println("==================================================");
+    }
+
+    /**
+     * 示例：获取任意日志组的全部日志
+     *
+     * 遍历日志组下所有日志流，合并日志事件后按时间戳排序输出。
+     * logStreamNamePrefix 可为 null，表示不按前缀过滤。
+     */
+    @Test
+    void testGetLogs() {
+        logService.printLogs(SSM_LOG_GROUP, null, 50);
+    }
+
+    /**
+     * 示例：按关键字过滤任意日志组的日志
+     *
+     * 底层调用 CloudWatch Logs FilterLogEvents API，
+     * 支持 filterPattern、startTime、endTime、logStreamNamePrefix 等参数。
+     */
+    @Test
+    void testFilterLogs() {
+        Instant endTime = Instant.now();
+        Instant startTime = endTime.minus(Duration.ofHours(24));
+
+        List<FilteredLogEvent> events = logService.filterLogs(
+                SSM_LOG_GROUP, null, "ERROR", startTime, endTime, 100);
+
+        System.out.println("==================== 过滤日志 ====================");
+        System.out.println("日志组: " + SSM_LOG_GROUP);
+        System.out.println("过滤模式: ERROR");
+        logService.printFilteredEvents(events);
+        System.out.println("==================================================");
+    }
+
+    /**
+     * 示例：通用错误诊断报告
+     *
+     * 使用 Logs Insights 查询任意日志组的错误数量和详情，
+     * 一次调用输出完整的错误诊断信息。
+     */
+    @Test
+    void testPrintErrorDiagnostics() {
+        Instant endTime = Instant.now();
+        Instant startTime = endTime.minus(Duration.ofHours(24));
+
+        logService.printErrorDiagnostics(SSM_LOG_GROUP, startTime, endTime);
+    }
+
+    // ==================== 十、SSM 脚本执行日志监控 ====================
+    // 配合 SsmService.executeScriptWithLogs 使用，
+    // 通过 CloudWatch Logs 查询脚本执行结果和错误信息
+
+    /**
+     * 示例：判断 SSM 脚本执行是否成功
+     *
+     * 查询 SsmService.executeScriptWithLogs 输出到 CloudWatch Logs 的日志，
+     * 通过匹配脚本执行结束时输出的标记来判断执行结果:
+     * - "执行结果: 成功" 表示脚本正常退出（exit code 0）
+     * - "ERROR: 执行结果: 失败" 表示脚本异常退出
+     */
+    @Test
+    void testIsSsmScriptSuccess() {
+        Instant endTime = Instant.now();
+        Instant startTime = endTime.minus(Duration.ofHours(1));
+
+        boolean success = logService.isSsmScriptSuccess(SSM_LOG_GROUP, startTime, endTime);
+        System.out.println("SSM 脚本执行是否成功: " + (success ? "是" : "否"));
+    }
+
+    /**
+     * 示例：SSM 脚本执行完整诊断报告
+     *
+     * 综合查询脚本执行状态、ERROR 日志数量和错误详情，
+     * 一次调用输出完整的执行诊断信息。
+     */
+    @Test
+    void testPrintSsmScriptDiagnostics() {
+        Instant endTime = Instant.now();
+        Instant startTime = endTime.minus(Duration.ofHours(1));
+
+        logService.printSsmScriptDiagnostics(SSM_LOG_GROUP, startTime, endTime);
+    }
+
+    /**
+     * 示例：通用 Logs Insights 自定义查询
+     *
+     * 对任意日志组执行 Logs Insights 查询，支持完整的查询语法。
+     * 适合复杂的日志分析、聚合统计场景。
+     */
+    @Test
+    void testRunInsightsQuery() {
+        Instant endTime = Instant.now();
+        Instant startTime = endTime.minus(Duration.ofHours(24));
+
+        // 统计每小时的日志数量
+        String query = "fields @timestamp "
+                + "| stats count() as logCount by bin(1h) as hour "
+                + "| sort hour desc";
+
+        var results = logService.runInsightsQuery(
+                SSM_LOG_GROUP, query, startTime, endTime, 24);
+        logService.printInsightsResults(results);
+    }
+
+    /**
+     * 示例：通用错误数量统计
+     *
+     * 使用 Logs Insights stats count() 聚合查询任意日志组的 ERROR 数量。
+     */
+    @Test
+    void testCountErrors() {
+        Instant endTime = Instant.now();
+        Instant startTime = endTime.minus(Duration.ofHours(24));
+
+        long errorCount = logService.countErrors(SSM_LOG_GROUP, startTime, endTime);
+        System.out.println("日志组 " + SSM_LOG_GROUP + " 错误总数: " + errorCount);
+    }
+
+    /**
+     * 示例：通用错误检测
+     *
+     * 快速判断任意日志组是否存在 ERROR 日志，返回 boolean。
+     */
+    @Test
+    void testHasErrors() {
+        Instant endTime = Instant.now();
+        Instant startTime = endTime.minus(Duration.ofHours(24));
+
+        boolean hasErrors = logService.hasErrors(SSM_LOG_GROUP, startTime, endTime);
+        System.out.println("日志组 " + SSM_LOG_GROUP + " 是否存在错误: " + (hasErrors ? "是" : "否"));
+    }
+
+    /**
+     * 示例：通用错误详情查询
+     *
+     * 获取任意日志组的 ERROR 日志详情，包括时间戳、消息内容和日志流名称。
+     */
+    @Test
+    void testGetErrorDetails() {
+        Instant endTime = Instant.now();
+        Instant startTime = endTime.minus(Duration.ofHours(24));
+
+        var errors = logService.getErrorDetails(SSM_LOG_GROUP, startTime, endTime, 10);
+        logService.printInsightsResults(errors);
+    }
 }
