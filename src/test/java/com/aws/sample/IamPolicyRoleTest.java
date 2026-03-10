@@ -159,6 +159,36 @@ public class IamPolicyRoleTest {
     }
 
     /**
+     * 测试为 EC2 实例附加和解除 IAM 角色（associateIamInstanceProfile）
+     * 需要在配置文件中设置有效的实例配置文件名称
+     */
+    @Test
+    void testAttachAndDisassociateIamRole() {
+        // 使用配置中的实例配置文件名称
+        AwsConfig config = new AwsConfig();
+        String instanceProfileName = config.getInstanceProfile();
+        // 替换为实际的 EC2 实例 ID
+        String instanceId = "i-xxxxxxxxxxxxxxxxx";
+
+        try {
+            // 1. 为实例附加 IAM 角色
+            System.out.println("=== 步骤 1: 为实例附加 IAM 角色 ===");
+            String associationId = iamService.attachIamRole(instanceId, instanceProfileName);
+            System.out.println("关联 ID: " + associationId);
+
+            // 2. 解除实例的 IAM 角色关联
+            System.out.println("\n=== 步骤 2: 解除实例的 IAM 角色关联 ===");
+            iamService.disassociateIamRole(instanceId);
+
+            System.out.println("\n✅ attachIamRole 测试完成！");
+        } catch (Exception e) {
+            System.err.println("测试失败: " + e.getMessage());
+            throw e;
+        }
+    }
+
+
+    /**
      * 清理测试资源
      */
     private void cleanup() {
