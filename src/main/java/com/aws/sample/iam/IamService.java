@@ -112,6 +112,31 @@ public class IamService implements AutoCloseable {
     }
 
     /**
+     * 删除 IAM 实例配置文件
+     * 需要先移除关联的角色再删除
+     * @param profileName 实例配置文件名称
+     * @param roleName 关联的角色名称（可为 null，表示无需移除角色）
+     */
+    public void deleteInstanceProfile(String profileName, String roleName) {
+        if (roleName != null && !roleName.isEmpty()) {
+            iamClient.removeRoleFromInstanceProfile(
+                    software.amazon.awssdk.services.iam.model.RemoveRoleFromInstanceProfileRequest.builder()
+                            .instanceProfileName(profileName)
+                            .roleName(roleName)
+                            .build()
+            );
+            System.out.println("已从实例配置文件移除角色: " + roleName);
+        }
+
+        iamClient.deleteInstanceProfile(
+                software.amazon.awssdk.services.iam.model.DeleteInstanceProfileRequest.builder()
+                        .instanceProfileName(profileName)
+                        .build()
+        );
+        System.out.println("实例配置文件已删除: " + profileName);
+    }
+
+    /**
      * 创建 IAM 策略
      * @param policyName 策略名称
      * @param policyDocument 策略文档（JSON 格式）

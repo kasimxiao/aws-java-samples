@@ -159,6 +159,40 @@ public class IamPolicyRoleTest {
     }
 
     /**
+     * 测试创建实例配置文件：创建角色 -> 创建实例配置文件 -> 清理
+     */
+    @Test
+    void testCreateInstanceProfile() {
+        testRoleName = "test-ip-role-" + System.currentTimeMillis();
+        String profileName = "test-ip-profile-" + System.currentTimeMillis();
+
+        try {
+            // 1. 先创建角色
+            System.out.println("=== 步骤 1: 创建 IAM 角色 ===");
+            String roleArn = iamService.createRole(testRoleName, EC2_TRUST_POLICY, "Test role for instance profile");
+            System.out.println("角色 ARN: " + roleArn);
+
+            // 2. 创建实例配置文件并关联角色
+            System.out.println("\n=== 步骤 2: 创建实例配置文件 ===");
+            String profileArn = iamService.createInstanceProfile(profileName, testRoleName);
+            System.out.println("实例配置文件 ARN: " + profileArn);
+
+            System.out.println("\n✅ 实例配置文件创建测试完成！");
+        } finally {
+            // 清理：先删除实例配置文件，再删除角色
+            System.out.println("\n=== 清理资源 ===");
+            try {
+                iamService.deleteInstanceProfile(profileName, testRoleName);
+                iamService.deleteRole(testRoleName);
+                System.out.println("资源清理完成");
+            } catch (Exception e) {
+                System.err.println("清理资源时出错: " + e.getMessage());
+            }
+        }
+    }
+
+
+    /**
      * 测试为 EC2 实例附加和解除 IAM 角色（associateIamInstanceProfile）
      * 需要在配置文件中设置有效的实例配置文件名称
      */
