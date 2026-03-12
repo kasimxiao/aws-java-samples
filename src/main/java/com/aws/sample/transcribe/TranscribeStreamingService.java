@@ -47,10 +47,21 @@ public class TranscribeStreamingService implements AutoCloseable {
     private final TranscribeStreamingAsyncClient client;
 
     public TranscribeStreamingService(AwsConfig config) {
+        this(config, config.getRegion());
+    }
+
+    /**
+     * 构造方法（指定区域）
+     *
+     * @param config 配置
+     * @param region 目标区域（如 Region.AP_SOUTHEAST_1 新加坡）
+     */
+    public TranscribeStreamingService(AwsConfig config, software.amazon.awssdk.regions.Region region) {
         this.client = TranscribeStreamingAsyncClient.builder()
                 .credentialsProvider(config.getCredentialsProvider())
-                .region(config.getRegion())
+                .region(region)
                 .build();
+        logger.info("TranscribeStreamingAsyncClient 初始化，区域: {}", region);
     }
 
     /**
