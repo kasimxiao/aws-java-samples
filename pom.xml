@@ -88,6 +88,12 @@
             <artifactId>textract</artifactId>
         </dependency>
 
+        <!-- AWS Transcribe Streaming SDK - 用于流式语音转文字 -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>transcribestreaming</artifactId>
+        </dependency>
+
         <!-- AWS CloudWatch Logs SDK - 用于查询训练日志 -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
