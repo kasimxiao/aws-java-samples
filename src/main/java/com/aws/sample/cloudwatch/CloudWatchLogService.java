@@ -7,6 +7,7 @@ import java.util.List;
 import com.aws.sample.common.AwsConfig;
 
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
+import software.amazon.awssdk.services.cloudwatchlogs.model.CreateLogGroupRequest;
 import software.amazon.awssdk.services.cloudwatchlogs.model.DeleteLogGroupRequest;
 import software.amazon.awssdk.services.cloudwatchlogs.model.DescribeLogStreamsRequest;
 import software.amazon.awssdk.services.cloudwatchlogs.model.DescribeLogStreamsResponse;
@@ -74,6 +75,25 @@ public class CloudWatchLogService {
     // ==================== 通用日志查询 ====================
 
     /**
+     * 确保日志组存在，不存在则创建
+     *
+     * 底层调用 CloudWatch Logs CreateLogGroup API。
+     * 如果日志组已存在，会忽略 ResourceAlreadyExistsException。
+     *
+     * @param logGroupName 日志组名称
+     */
+    public void ensureLogGroupExists(String logGroupName) {
+        try {
+            logsClient.createLogGroup(CreateLogGroupRequest.builder()
+                    .logGroupName(logGroupName)
+                    .build());
+            System.out.println("日志组已创建: " + logGroupName);
+        } catch (software.amazon.awssdk.services.cloudwatchlogs.model.ResourceAlreadyExistsException e) {
+            System.out.println("日志组已存在: " + logGroupName);
+        }
+    }
+
+    /**
      * 查询指定日志组的日志流
      *
      * 底层调用 CloudWatch Logs DescribeLogStreams API，按最后事件时间降序排列。
@@ -88,12 +108,13 @@ public class CloudWatchLogService {
                 + (logStreamNamePrefix != null ? ", 前缀: " + logStreamNamePrefix : ""));
 
         DescribeLogStreamsRequest.Builder requestBuilder = DescribeLogStreamsRequest.builder()
-                .logGroupName(logGroupName)
-                .orderBy(OrderBy.LAST_EVENT_TIME)
-                .descending(true);
+                .logGroupName(logGroupName);
 
         if (logStreamNamePrefix != null && !logStreamNamePrefix.isEmpty()) {
+            // CloudWatch Logs API 限制：带 logStreamNamePrefix 时不能按 LastEventTime 排序
             requestBuilder.logStreamNamePrefix(logStreamNamePrefix);
+        } else {
+            requestBuilder.orderBy(OrderBy.LAST_EVENT_TIME).descending(true);
         }
 
         DescribeLogStreamsResponse response = logsClient.describeLogStreams(requestBuilder.build());

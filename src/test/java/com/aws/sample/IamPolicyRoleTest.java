@@ -191,6 +191,39 @@ public class IamPolicyRoleTest {
         }
     }
 
+    /**
+     * 测试为 EC2 实例 i-0073ced63d0b6b013 附加 ec2admin 实例配置文件
+     */
+    @Test
+    void testAttachEc2AdminToInstance() {
+        String instanceId = "i-0bc286927a1779157";
+        String instanceProfileName = "EC2AdminRole";
+
+        System.out.println("=== 为实例附加 IAM 角色 ===");
+        System.out.println("实例 ID: " + instanceId);
+        System.out.println("实例配置文件: " + instanceProfileName);
+
+        String associationId = iamService.attachIamRole(instanceId, instanceProfileName);
+        System.out.println("关联 ID: " + associationId);
+        System.out.println("\n✅ 附加完成！");
+    }
+
+    /**
+     * 测试解除 EC2 实例的 IAM 角色关联
+     */
+    @Test
+    void testDisassociateIamRoleFromInstance() {
+        String instanceId = "i-0bc286927a1779157";
+
+        System.out.println("=== 解除实例 IAM 角色关联 ===");
+        System.out.println("实例 ID: " + instanceId);
+
+        iamService.disassociateIamRole(instanceId);
+        System.out.println("\n✅ 解除关联完成！");
+    }
+
+
+
 
     /**
      * 测试为 EC2 实例附加和解除 IAM 角色（associateIamInstanceProfile）
