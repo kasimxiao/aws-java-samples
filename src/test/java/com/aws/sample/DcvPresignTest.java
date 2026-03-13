@@ -9,8 +9,8 @@ import com.aws.sample.dcv.DcvService;
 public class DcvPresignTest {
 
     public static void main(String[] args) {
-        String instanceId = "i-0bc286927a1779157";
-        String serverIp = "3.71.179.124";
+        String instanceId = "i-0e02f5f1c7e252caf";
+        String serverIp = "63.176.131.75";
 
         DcvService dcvService = new DcvService(new AwsConfig());
         
