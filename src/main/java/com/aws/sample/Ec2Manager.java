@@ -12,6 +12,7 @@ import com.aws.sample.ec2.model.PingStatus;
 import com.aws.sample.iam.IamService;
 import com.aws.sample.s3.S3Service;
 import com.aws.sample.ssm.SsmService;
+import com.aws.sample.ssm.model.SsmConnectionStatus;
 import com.aws.sample.sts.StsService;
 
 import software.amazon.awssdk.services.s3.model.CORSRule;
@@ -136,6 +137,20 @@ public class Ec2Manager implements AutoCloseable {
     public String mountS3WithDefaults(String instanceId) { return ssmService.mountS3WithDefaults(instanceId); }
     public CommandResult getCommandResult(String commandId, String instanceId) {
         return ssmService.getCommandResult(commandId, instanceId);
+    }
+
+    /**
+     * 获取单个实例的 SSM Agent 连接状态（Session Manager connection status）
+     */
+    public SsmConnectionStatus getSsmConnectionStatus(String instanceId) {
+        return ssmService.getConnectionStatus(instanceId);
+    }
+
+    /**
+     * 获取所有已注册 SSM 的实例连接状态
+     */
+    public List<SsmConnectionStatus> getAllSsmConnectionStatuses() {
+        return ssmService.getAllConnectionStatuses();
     }
 
     // ==================== DCV 操作（免密登录）====================

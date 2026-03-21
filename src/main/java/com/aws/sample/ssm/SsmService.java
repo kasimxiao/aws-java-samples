@@ -5,11 +5,16 @@ import java.util.Map;
 
 import com.aws.sample.common.AwsConfig;
 import com.aws.sample.common.model.CommandResult;
+import com.aws.sample.ssm.model.SsmConnectionStatus;
 
 import software.amazon.awssdk.services.ssm.SsmClient;
 import software.amazon.awssdk.services.ssm.model.CloudWatchOutputConfig;
+import software.amazon.awssdk.services.ssm.model.DescribeInstanceInformationRequest;
+import software.amazon.awssdk.services.ssm.model.DescribeInstanceInformationResponse;
 import software.amazon.awssdk.services.ssm.model.GetCommandInvocationRequest;
 import software.amazon.awssdk.services.ssm.model.GetCommandInvocationResponse;
+import software.amazon.awssdk.services.ssm.model.InstanceInformationFilter;
+import software.amazon.awssdk.services.ssm.model.InstanceInformationFilterKey;
 import software.amazon.awssdk.services.ssm.model.SendCommandRequest;
 import software.amazon.awssdk.services.ssm.model.SendCommandResponse;
 
@@ -226,6 +231,40 @@ public class SsmService implements AutoCloseable {
         }
         System.out.println("完整日志请查看 CloudWatch Logs: " + logGroupName);
         return result;
+    }
+
+    // ==================== SSM 连接状态查询 ====================
+
+    /**
+     * 获取单个实例的 SSM Agent 连接状态
+     * @param instanceId 实例 ID
+     * @return 连接状态信息，未注册 SSM 时返回 null
+     */
+    public SsmConnectionStatus getConnectionStatus(String instanceId) {
+        DescribeInstanceInformationRequest request = DescribeInstanceInformationRequest.builder()
+                .instanceInformationFilterList(InstanceInformationFilter.builder()
+                        .key(InstanceInformationFilterKey.INSTANCE_IDS)
+                        .valueSet(instanceId)
+                        .build())
+                .build();
+        DescribeInstanceInformationResponse response = ssmClient.describeInstanceInformation(request);
+        if (response.instanceInformationList().isEmpty()) {
+            return null;
+        }
+        return new SsmConnectionStatus(response.instanceInformationList().get(0));
+    }
+
+    /**
+     * 获取所有已注册 SSM 的实例连接状态
+     * @return 连接状态列表
+     */
+    public List<SsmConnectionStatus> getAllConnectionStatuses() {
+        DescribeInstanceInformationResponse response = ssmClient.describeInstanceInformation(
+                DescribeInstanceInformationRequest.builder().build()
+        );
+        return response.instanceInformationList().stream()
+                .map(SsmConnectionStatus::new)
+                .toList();
     }
 
     /**
