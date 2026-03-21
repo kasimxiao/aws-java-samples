@@ -7,13 +7,13 @@ import java.util.Map;
 
 import com.aws.sample.common.AwsConfig;
 import com.aws.sample.ec2.model.InstanceInfo;
+import com.aws.sample.ec2.model.PingStatus;
 
 import software.amazon.awssdk.services.ec2.Ec2Client;
 import software.amazon.awssdk.services.ec2.model.BlockDeviceMapping;
 import software.amazon.awssdk.services.ec2.model.CopyImageRequest;
 import software.amazon.awssdk.services.ec2.model.CopyImageResponse;
 import software.amazon.awssdk.services.ec2.model.CreateImageRequest;
-import software.amazon.awssdk.services.ec2.model.InstanceNetworkInterfaceSpecification;
 import software.amazon.awssdk.services.ec2.model.CreateImageResponse;
 import software.amazon.awssdk.services.ec2.model.CreateTagsRequest;
 import software.amazon.awssdk.services.ec2.model.DeleteSnapshotRequest;
@@ -21,6 +21,8 @@ import software.amazon.awssdk.services.ec2.model.DeleteTagsRequest;
 import software.amazon.awssdk.services.ec2.model.DeregisterImageRequest;
 import software.amazon.awssdk.services.ec2.model.DescribeImagesRequest;
 import software.amazon.awssdk.services.ec2.model.DescribeImagesResponse;
+import software.amazon.awssdk.services.ec2.model.DescribeInstanceStatusRequest;
+import software.amazon.awssdk.services.ec2.model.DescribeInstanceStatusResponse;
 import software.amazon.awssdk.services.ec2.model.DescribeInstancesRequest;
 import software.amazon.awssdk.services.ec2.model.DescribeInstancesResponse;
 import software.amazon.awssdk.services.ec2.model.DescribeTagsRequest;
@@ -30,6 +32,7 @@ import software.amazon.awssdk.services.ec2.model.Filter;
 import software.amazon.awssdk.services.ec2.model.IamInstanceProfileSpecification;
 import software.amazon.awssdk.services.ec2.model.Image;
 import software.amazon.awssdk.services.ec2.model.Instance;
+import software.amazon.awssdk.services.ec2.model.InstanceNetworkInterfaceSpecification;
 import software.amazon.awssdk.services.ec2.model.InstanceStateName;
 import software.amazon.awssdk.services.ec2.model.InstanceType;
 import software.amazon.awssdk.services.ec2.model.LaunchPermission;
@@ -221,6 +224,81 @@ public class Ec2Service implements AutoCloseable {
                 .flatMap(r -> r.instances().stream())
                 .map(InstanceInfo::new)
                 .toList();
+    }
+
+    // ==================== Ping 状态检查 ====================
+
+    /**
+     * 获取单个实例的 Ping 状态（系统检查 + 实例检查）
+     * @param instanceId 实例 ID
+     * @return Ping 状态信息，实例不存在或未运行时返回 null
+     */
+    public PingStatus getPingStatus(String instanceId) {
+        DescribeInstanceStatusRequest request = DescribeInstanceStatusRequest.builder()
+                .instanceIds(instanceId)
+                .build();
+        DescribeInstanceStatusResponse response = ec2Client.describeInstanceStatus(request);
+        if (response.instanceStatuses().isEmpty()) {
+            return null;
+        }
+        return new PingStatus(response.instanceStatuses().get(0));
+    }
+
+    /**
+     * 批量获取实例的 Ping 状态
+     * @param instanceIds 实例 ID 列表
+     * @return Ping 状态列表
+     */
+    public List<PingStatus> getPingStatuses(List<String> instanceIds) {
+        DescribeInstanceStatusRequest request = DescribeInstanceStatusRequest.builder()
+                .instanceIds(instanceIds)
+                .build();
+        DescribeInstanceStatusResponse response = ec2Client.describeInstanceStatus(request);
+        return response.instanceStatuses().stream()
+                .map(PingStatus::new)
+                .toList();
+    }
+
+    /**
+     * 获取所有运行中实例的 Ping 状态
+     * @return Ping 状态列表
+     */
+    public List<PingStatus> getAllPingStatuses() {
+        DescribeInstanceStatusResponse response = ec2Client.describeInstanceStatus(
+                DescribeInstanceStatusRequest.builder().build()
+        );
+        return response.instanceStatuses().stream()
+                .map(PingStatus::new)
+                .toList();
+    }
+
+    /**
+     * 等待实例 Ping 状态变为可达（2/2 checks passed）
+     * @param instanceId 实例 ID
+     * @param timeoutMinutes 超时时间（分钟）
+     */
+    public void waitForPingReachable(String instanceId, int timeoutMinutes) {
+        System.out.println("等待实例 Ping 可达: " + instanceId);
+        int maxAttempts = timeoutMinutes * 6; // 每 10 秒检查一次
+        for (int i = 0; i < maxAttempts; i++) {
+            PingStatus status = getPingStatus(instanceId);
+            if (status != null) {
+                System.out.println("  系统检查: " + status.getSystemStatus()
+                        + ", 实例检查: " + status.getInstanceStatus()
+                        + " (" + (i * 10) + "秒)");
+                if (status.isReachable()) {
+                    System.out.println("实例已可达 (2/2 checks passed): " + instanceId);
+                    return;
+                }
+            }
+            try {
+                Thread.sleep(10000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("等待被中断", e);
+            }
+        }
+        throw new RuntimeException("等待实例 Ping 可达超时: " + instanceId);
     }
 
     private void waitForState(String instanceId, InstanceStateName targetState) {

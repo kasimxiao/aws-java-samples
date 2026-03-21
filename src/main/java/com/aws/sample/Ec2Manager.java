@@ -8,6 +8,7 @@ import com.aws.sample.common.model.CommandResult;
 import com.aws.sample.dcv.DcvService;
 import com.aws.sample.ec2.Ec2Service;
 import com.aws.sample.ec2.model.InstanceInfo;
+import com.aws.sample.ec2.model.PingStatus;
 import com.aws.sample.iam.IamService;
 import com.aws.sample.s3.S3Service;
 import com.aws.sample.ssm.SsmService;
@@ -72,6 +73,36 @@ public class Ec2Manager implements AutoCloseable {
     public List<InstanceInfo> listAllInstances() { return ec2Service.listAllInstances(); }
     public List<InstanceInfo> findInstancesByTag(String tagKey, String tagValue) {
         return ec2Service.findInstancesByTag(tagKey, tagValue);
+    }
+
+    // ==================== Ping 状态检查 ====================
+
+    /**
+     * 获取单个实例的 Ping 状态
+     */
+    public PingStatus getPingStatus(String instanceId) {
+        return ec2Service.getPingStatus(instanceId);
+    }
+
+    /**
+     * 批量获取实例的 Ping 状态
+     */
+    public List<PingStatus> getPingStatuses(List<String> instanceIds) {
+        return ec2Service.getPingStatuses(instanceIds);
+    }
+
+    /**
+     * 获取所有运行中实例的 Ping 状态
+     */
+    public List<PingStatus> getAllPingStatuses() {
+        return ec2Service.getAllPingStatuses();
+    }
+
+    /**
+     * 等待实例 Ping 可达（2/2 checks passed）
+     */
+    public void waitForPingReachable(String instanceId, int timeoutMinutes) {
+        ec2Service.waitForPingReachable(instanceId, timeoutMinutes);
     }
 
     // ==================== 标签管理 ====================
