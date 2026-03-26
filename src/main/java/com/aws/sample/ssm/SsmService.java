@@ -78,14 +78,23 @@ public class SsmService implements AutoCloseable {
                 ? s3BucketName + "/" + s3SubDir
                 : s3BucketName;
 
+        String regionId = config.getRegion().id();
+        String iamRole = config.getInstanceProfile();
+        String fstabEntry = s3fsSource + " " + mountPoint + " fuse.s3fs _netdev,iam_role=" + iamRole
+                + ",allow_other,compat_dir,url=https://s3." + regionId + ".amazonaws.com,endpoint=" + regionId + " 0 0";
+
         List<String> commands = List.of(
-                "if ! command -v s3fs &> /dev/null; then",
-                "    sudo yum install -y epel-release || sudo amazon-linux-extras install epel -y",
-                "    sudo yum install -y s3fs-fuse",
-                "fi",
+                "#!/bin/bash",
+                "set -x",
+                "command -v s3fs || { sudo apt-get update -y && sudo apt-get install -y s3fs; }",
                 "sudo mkdir -p " + mountPoint,
-                "sudo s3fs " + s3fsSource + " " + mountPoint + " -o iam_role=auto -o allow_other -o use_cache=/tmp/s3fs",
+                "sudo fusermount -u " + mountPoint + " 2>/dev/null || sudo umount -l " + mountPoint + " 2>/dev/null || true",
+                "grep -qF '" + s3fsSource + "' /etc/fstab || echo '" + fstabEntry + "' | sudo tee -a /etc/fstab",
+                "sudo s3fs " + s3fsSource + " " + mountPoint + " -o iam_role=" + iamRole + " -o allow_other -o nonempty -o compat_dir -o url=https://s3." + regionId + ".amazonaws.com -o endpoint=" + regionId,
+                "sleep 2",
+                "mount | grep " + mountPoint,
                 "df -h " + mountPoint,
+                "ls -la " + mountPoint,
                 "echo 'S3 路径 " + displayPath + " 已挂载到 " + mountPoint + "'"
         );
         return executeCommand(instanceId, commands);

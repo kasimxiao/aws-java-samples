@@ -162,6 +162,7 @@ public class AwsConfig {
     }
 
     public Region getRegion() { return Region.of(region); }
+    public void setRegion(String region) { this.region = region; }
     public String getVpcId() { return vpcId; }
     public String getSubnetId() { return subnetId; }
     public String getAvailabilityZone() { return availabilityZone; }
