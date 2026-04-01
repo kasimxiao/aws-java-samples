@@ -106,6 +106,43 @@ public class Ec2Manager implements AutoCloseable {
         ec2Service.waitForPingReachable(instanceId, timeoutMinutes);
     }
 
+    // ==================== EBS 卷管理 ====================
+
+    /**
+     * 获取实例挂载的所有 EBS 卷 ID
+     */
+    public List<String> getVolumeIds(String instanceId) {
+        return ec2Service.getVolumeIds(instanceId);
+    }
+
+    /**
+     * 获取实例的根卷 ID
+     */
+    public String getRootVolumeId(String instanceId) {
+        return ec2Service.getRootVolumeId(instanceId);
+    }
+
+    /**
+     * 修改 EBS 卷的 IOPS
+     * @param volumeId EBS 卷 ID
+     * @param iops 目标 IOPS 值
+     * @return 卷修改状态
+     */
+    public String modifyVolumeIops(String volumeId, int iops) {
+        return ec2Service.modifyVolumeIops(volumeId, iops);
+    }
+
+    /**
+     * 同时修改 EBS 卷的类型和 IOPS
+     * @param volumeId EBS 卷 ID
+     * @param volumeType 目标卷类型（如 gp3、io1、io2）
+     * @param iops 目标 IOPS 值
+     * @return 卷修改状态
+     */
+    public String modifyVolumeIops(String volumeId, String volumeType, int iops) {
+        return ec2Service.modifyVolumeIops(volumeId, volumeType, iops);
+    }
+
     // ==================== 标签管理 ====================
 
     public void addTag(String instanceId, String key, String value) { ec2Service.addTag(instanceId, key, value); }

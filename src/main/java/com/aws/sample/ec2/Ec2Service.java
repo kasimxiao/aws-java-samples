@@ -27,6 +27,8 @@ import software.amazon.awssdk.services.ec2.model.DescribeInstancesRequest;
 import software.amazon.awssdk.services.ec2.model.DescribeInstancesResponse;
 import software.amazon.awssdk.services.ec2.model.DescribeTagsRequest;
 import software.amazon.awssdk.services.ec2.model.DescribeTagsResponse;
+import software.amazon.awssdk.services.ec2.model.DescribeVolumesRequest;
+import software.amazon.awssdk.services.ec2.model.DescribeVolumesResponse;
 import software.amazon.awssdk.services.ec2.model.EbsBlockDevice;
 import software.amazon.awssdk.services.ec2.model.Filter;
 import software.amazon.awssdk.services.ec2.model.IamInstanceProfileSpecification;
@@ -38,6 +40,8 @@ import software.amazon.awssdk.services.ec2.model.InstanceType;
 import software.amazon.awssdk.services.ec2.model.LaunchPermission;
 import software.amazon.awssdk.services.ec2.model.LaunchPermissionModifications;
 import software.amazon.awssdk.services.ec2.model.ModifyImageAttributeRequest;
+import software.amazon.awssdk.services.ec2.model.ModifyVolumeRequest;
+import software.amazon.awssdk.services.ec2.model.ModifyVolumeResponse;
 import software.amazon.awssdk.services.ec2.model.RebootInstancesRequest;
 import software.amazon.awssdk.services.ec2.model.Reservation;
 import software.amazon.awssdk.services.ec2.model.ResourceType;
@@ -680,6 +684,101 @@ public class Ec2Service implements AutoCloseable {
             return String.format("ImageInfo{id='%s', name='%s', state='%s', arch='%s', created='%s'}",
                     imageId, name, state, architecture, creationDate);
         }
+    }
+
+    // ==================== EBS 卷管理 ====================
+
+    /**
+     * 获取实例挂载的所有 EBS 卷 ID
+     *
+     * @param instanceId EC2 实例 ID
+     * @return EBS 卷 ID 列表
+     */
+    public List<String> getVolumeIds(String instanceId) {
+        DescribeVolumesRequest request = DescribeVolumesRequest.builder()
+                .filters(Filter.builder()
+                        .name("attachment.instance-id")
+                        .values(instanceId)
+                        .build())
+                .build();
+
+        DescribeVolumesResponse response = ec2Client.describeVolumes(request);
+        List<String> volumeIds = response.volumes().stream()
+                .map(v -> v.volumeId())
+                .toList();
+        System.out.println("实例 " + instanceId + " 关联的 EBS 卷: " + volumeIds);
+        return volumeIds;
+    }
+
+    /**
+     * 获取实例的根卷 ID
+     *
+     * @param instanceId EC2 实例 ID
+     * @return 根卷 ID，未找到时返回 null
+     */
+    public String getRootVolumeId(String instanceId) {
+        DescribeInstancesRequest request = DescribeInstancesRequest.builder()
+                .instanceIds(instanceId)
+                .build();
+
+        DescribeInstancesResponse response = ec2Client.describeInstances(request);
+        return response.reservations().stream()
+                .flatMap(r -> r.instances().stream())
+                .findFirst()
+                .map(instance -> {
+                    String rootDevice = instance.rootDeviceName();
+                    return instance.blockDeviceMappings().stream()
+                            .filter(bdm -> bdm.deviceName().equals(rootDevice))
+                            .map(bdm -> bdm.ebs().volumeId())
+                            .findFirst()
+                            .orElse(null);
+                })
+                .orElse(null);
+    }
+
+    /**
+     * 修改 EBS 卷的 IOPS
+     * 仅支持 io1、io2、gp3 类型的卷
+     *
+     * @param volumeId EBS 卷 ID
+     * @param iops     目标 IOPS 值
+     * @return 卷修改状态
+     */
+    public String modifyVolumeIops(String volumeId, int iops) {
+        System.out.println("修改 EBS 卷 IOPS: volumeId=" + volumeId + ", iops=" + iops);
+
+        ModifyVolumeRequest request = ModifyVolumeRequest.builder()
+                .volumeId(volumeId)
+                .iops(iops)
+                .build();
+
+        ModifyVolumeResponse response = ec2Client.modifyVolume(request);
+        String state = response.volumeModification().modificationStateAsString();
+        System.out.println("卷修改已提交: volumeId=" + volumeId + ", 状态=" + state);
+        return state;
+    }
+
+    /**
+     * 同时修改 EBS 卷的类型和 IOPS
+     *
+     * @param volumeId   EBS 卷 ID
+     * @param volumeType 目标卷类型（如 gp3、io1、io2）
+     * @param iops       目标 IOPS 值
+     * @return 卷修改状态
+     */
+    public String modifyVolumeIops(String volumeId, String volumeType, int iops) {
+        System.out.println("修改 EBS 卷: volumeId=" + volumeId + ", type=" + volumeType + ", iops=" + iops);
+
+        ModifyVolumeRequest request = ModifyVolumeRequest.builder()
+                .volumeId(volumeId)
+                .volumeType(VolumeType.fromValue(volumeType))
+                .iops(iops)
+                .build();
+
+        ModifyVolumeResponse response = ec2Client.modifyVolume(request);
+        String state = response.volumeModification().modificationStateAsString();
+        System.out.println("卷修改已提交: volumeId=" + volumeId + ", 状态=" + state);
+        return state;
     }
 
     @Override
