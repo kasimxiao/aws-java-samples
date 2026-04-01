@@ -115,6 +115,63 @@ public class StsService implements AutoCloseable {
     }
 
     /**
+     * 获取限定 SageMaker 端点调用权限的临时凭证
+     * 适用于多租户场景，每个租户只能调用自己的 SageMaker 端点
+     *
+     * 生成的临时凭证仅允许调用指定端点的 InvokeEndpoint API，
+     * 外部 client 无需持有长期 AKSK，通过后端 AssumeRole 获取临时凭证即可安全调用模型。
+     *
+     * @param roleArn        租户对应的 IAM 角色 ARN（该角色需有 sagemaker:InvokeEndpoint 权限）
+     * @param sessionName    会话名称（建议使用租户 ID 标识）
+     * @param endpointArns   允许调用的 SageMaker 端点 ARN 列表
+     * @return 临时凭证
+     */
+    public Credentials assumeRoleForSageMaker(String roleArn, String sessionName,
+                                               java.util.List<String> endpointArns) {
+        // 构建资源 ARN 列表的 JSON 数组
+        StringBuilder arnArray = new StringBuilder("[");
+        for (int i = 0; i < endpointArns.size(); i++) {
+            if (i > 0) arnArray.append(",");
+            arnArray.append("\"").append(endpointArns.get(i)).append("\"");
+        }
+        arnArray.append("]");
+
+        String policy = """
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "sagemaker:InvokeEndpoint",
+                                "sagemaker:InvokeEndpointAsync"
+                            ],
+                            "Resource": %s
+                        }
+                    ]
+                }
+                """.formatted(arnArray.toString());
+
+        System.out.println("使用内联策略限制 SageMaker 端点调用范围:");
+        endpointArns.forEach(arn -> System.out.println("  端点: " + arn));
+
+        return assumeRole(roleArn, sessionName, DEFAULT_DURATION_SECONDS, policy);
+    }
+
+    /**
+     * 获取限定单个 SageMaker 端点调用权限的临时凭证（便捷方法）
+     *
+     * @param roleArn        租户对应的 IAM 角色 ARN
+     * @param sessionName    会话名称
+     * @param endpointArn    允许调用的 SageMaker 端点 ARN
+     * @return 临时凭证
+     */
+    public Credentials assumeRoleForSageMaker(String roleArn, String sessionName, String endpointArn) {
+        return assumeRoleForSageMaker(roleArn, sessionName, java.util.List.of(endpointArn));
+    }
+
+
+    /**
      * 获取限定 S3 桶和前缀访问权限的临时凭证
      * 适用于多租户场景，每个用户只能访问自己的前缀路径
      *

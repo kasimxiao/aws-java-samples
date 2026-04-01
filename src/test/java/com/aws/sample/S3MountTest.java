@@ -14,14 +14,14 @@ public class S3MountTest {
     public static void main(String[] args) {
         AwsConfig config = new AwsConfig();
         // 此测试的实例和 S3 桶在 ap-northeast-1
-        config.setRegion("ap-northeast-1");
+        config.setRegion("eu-central-1");
 
         try (SsmService ssmService = new SsmService(config)) {
 
-            String instanceId = "i-0dd93cdc44ea2a471";
-            String s3Bucket = "wongxiao-file";
+            String instanceId = "i-0fbcf34ebe34980cc";
+            String s3Bucket = "wangxiao-file-eu-central-1";
             String s3SubDir = "uploads";
-            String mountPoint = "/root/test";
+            String mountPoint = "/home/ubuntu/test";
 
             System.out.println("========== S3 挂载测试 ==========");
             System.out.println("实例 ID:   " + instanceId);

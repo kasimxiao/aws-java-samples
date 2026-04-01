@@ -15,6 +15,7 @@ import com.aws.sample.ssm.SsmService;
 import com.aws.sample.ssm.model.SsmConnectionStatus;
 import com.aws.sample.sts.StsService;
 
+import software.amazon.awssdk.services.ec2.model.BlockDeviceMapping;
 import software.amazon.awssdk.services.s3.model.CORSRule;
 import software.amazon.awssdk.services.sts.model.Credentials;
 
@@ -56,6 +57,11 @@ public class Ec2Manager implements AutoCloseable {
 
     public String createInstanceWithDefaults(String instanceName, Map<String, String> additionalTags) {
         return ec2Service.createInstanceWithDefaults(instanceName, additionalTags);
+    }
+
+    public String createInstanceWithDefaults(String instanceName, Map<String, String> additionalTags,
+                                              List<BlockDeviceMapping> additionalBlockDeviceMappings) {
+        return ec2Service.createInstanceWithDefaults(instanceName, additionalTags, additionalBlockDeviceMappings);
     }
 
     public String createInstance(String amiId, String instanceType, String keyName,

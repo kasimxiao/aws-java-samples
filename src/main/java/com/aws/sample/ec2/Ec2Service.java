@@ -92,6 +92,22 @@ public class Ec2Service implements AutoCloseable {
                                   int ebsVolumeSize, String ebsVolumeType,
                                   String instanceName, String iamInstanceProfile,
                                   Map<String, String> additionalTags) {
+        return createInstance(amiId, instanceType, keyName, securityGroupIds, subnetId,
+                ebsVolumeSize, ebsVolumeType, instanceName, iamInstanceProfile,
+                additionalTags, null);
+    }
+
+    /**
+     * 创建 EC2 实例（完整参数，支持自定义标签和额外 EBS 卷）
+     * @param additionalTags 额外的标签（可为 null）
+     * @param additionalBlockDeviceMappings 额外的块设备映射（可为 null）
+     */
+    public String createInstance(String amiId, String instanceType, String keyName,
+                                  List<String> securityGroupIds, String subnetId,
+                                  int ebsVolumeSize, String ebsVolumeType,
+                                  String instanceName, String iamInstanceProfile,
+                                  Map<String, String> additionalTags,
+                                  List<BlockDeviceMapping> additionalBlockDeviceMappings) {
 
         EbsBlockDevice ebsBlockDevice = EbsBlockDevice.builder()
                 .volumeSize(ebsVolumeSize)
@@ -100,10 +116,17 @@ public class Ec2Service implements AutoCloseable {
                 .encrypted(true)
                 .build();
 
-        BlockDeviceMapping blockDeviceMapping = BlockDeviceMapping.builder()
+        BlockDeviceMapping rootDeviceMapping = BlockDeviceMapping.builder()
                 .deviceName("/dev/xvda")
                 .ebs(ebsBlockDevice)
                 .build();
+
+        // 合并根卷和额外卷
+        List<BlockDeviceMapping> allMappings = new ArrayList<>();
+        allMappings.add(rootDeviceMapping);
+        if (additionalBlockDeviceMappings != null) {
+            allMappings.addAll(additionalBlockDeviceMappings);
+        }
 
         // 构建标签列表
         List<Tag> tags = new ArrayList<>();
@@ -132,7 +155,7 @@ public class Ec2Service implements AutoCloseable {
                 .instanceType(InstanceType.fromValue(instanceType))
                 .keyName(keyName)
                 .networkInterfaces(networkInterface)
-                .blockDeviceMappings(blockDeviceMapping)
+                .blockDeviceMappings(allMappings)
                 .minCount(1)
                 .maxCount(1)
                 .tagSpecifications(tagSpecs);
@@ -160,6 +183,14 @@ public class Ec2Service implements AutoCloseable {
      * 使用默认配置创建实例（支持自定义标签）
      */
     public String createInstanceWithDefaults(String instanceName, Map<String, String> additionalTags) {
+        return createInstanceWithDefaults(instanceName, additionalTags, null);
+    }
+
+    /**
+     * 使用默认配置创建实例（支持自定义标签和额外 EBS 卷）
+     */
+    public String createInstanceWithDefaults(String instanceName, Map<String, String> additionalTags,
+                                              List<BlockDeviceMapping> additionalBlockDeviceMappings) {
         return createInstance(
                 config.getDefaultAmi(),
                 config.getInstanceType(),
@@ -170,7 +201,8 @@ public class Ec2Service implements AutoCloseable {
                 config.getEbsType(),
                 instanceName != null ? instanceName : config.getNamePrefix(),
                 config.getInstanceProfile().isEmpty() ? null : config.getInstanceProfile(),
-                additionalTags
+                additionalTags,
+                additionalBlockDeviceMappings
         );
     }
 

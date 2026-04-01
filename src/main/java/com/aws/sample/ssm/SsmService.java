@@ -81,19 +81,34 @@ public class SsmService implements AutoCloseable {
         String regionId = config.getRegion().id();
         String iamRole = config.getInstanceProfile();
         String fstabEntry = s3fsSource + " " + mountPoint + " fuse.s3fs _netdev,iam_role=" + iamRole
-                + ",allow_other,compat_dir,url=https://s3." + regionId + ".amazonaws.com,endpoint=" + regionId + " 0 0";
+                + ",allow_other,umask=0000,url=https://s3." + regionId + ".amazonaws.com,endpoint=" + regionId + " 0 0";
 
         List<String> commands = List.of(
                 "#!/bin/bash",
                 "set -x",
-                "command -v s3fs || { sudo apt-get update -y && sudo apt-get install -y s3fs; }",
+                "echo '===== 环境检查 ====='",
+                "echo '操作系统:' $(cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d= -f2)",
+                "echo 'IAM 角色:' $(curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/ 2>/dev/null || echo '未绑定')",
+                "command -v s3fs && echo 's3fs 版本:' $(s3fs --version 2>&1 | head -1) || { echo 's3fs 未安装，开始安装...'; sudo apt-get update -y && sudo apt-get install -y s3fs; }",
+                "echo '===== 开始挂载 ====='",
+                "echo '挂载源: " + s3fsSource + "'",
+                "echo '挂载点: " + mountPoint + "'",
+                "echo 'IAM Role: " + iamRole + "'",
+                "echo 'Region: " + regionId + "'",
                 "sudo mkdir -p " + mountPoint,
                 "sudo fusermount -u " + mountPoint + " 2>/dev/null || sudo umount -l " + mountPoint + " 2>/dev/null || true",
                 "grep -qF '" + s3fsSource + "' /etc/fstab || echo '" + fstabEntry + "' | sudo tee -a /etc/fstab",
-                "sudo s3fs " + s3fsSource + " " + mountPoint + " -o iam_role=" + iamRole + " -o allow_other -o nonempty -o compat_dir -o url=https://s3." + regionId + ".amazonaws.com -o endpoint=" + regionId,
-                "sleep 2",
-                "mount | grep " + mountPoint,
-                "df -h " + mountPoint,
+                "echo '===== 执行 s3fs 挂载 ====='",
+                "sudo s3fs " + s3fsSource + " " + mountPoint + " -o iam_role=" + iamRole + " -o allow_other -o nonempty -o umask=0000 -o url=https://s3." + regionId + ".amazonaws.com -o endpoint=" + regionId + " -o dbglevel=err 2>/tmp/s3fs_err.log; S3FS_EXIT=$?",
+                "echo 's3fs 退出码:' $S3FS_EXIT",
+                "sleep 3",
+                "echo '===== 挂载结果检查 ====='",
+                "echo 'mount 输出:' $(mount | grep " + mountPoint + " || echo '未找到挂载点')",
+                "echo 'fstab 内容:' $(grep " + s3fsSource + " /etc/fstab || echo '未找到 fstab 条目')",
+                "if [ -f /tmp/s3fs_err.log ] && [ -s /tmp/s3fs_err.log ]; then echo 's3fs 错误日志:'; cat /tmp/s3fs_err.log; fi",
+                "echo 'syslog 中的 s3fs 日志:'; tail -30 /var/log/syslog 2>/dev/null | grep -i s3fs || echo '无 syslog 日志'",
+                "if mount | grep -q " + mountPoint + "; then echo '===== 挂载成功 ====='; else echo '===== 挂载失败 ====='; fi",
+                "df -h " + mountPoint + " || true",
                 "ls -la " + mountPoint,
                 "echo 'S3 路径 " + displayPath + " 已挂载到 " + mountPoint + "'"
         );

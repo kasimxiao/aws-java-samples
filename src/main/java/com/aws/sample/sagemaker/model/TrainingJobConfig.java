@@ -48,6 +48,10 @@ public class TrainingJobConfig {
     // 训练入口脚本名称（可选，配合 s3SubmitDirectory 使用）
     private String entryPoint;
     
+    // TensorBoard 配置（可选，指定后训练容器会将 TensorBoard 日志上传到 S3）
+    private String tensorBoardS3OutputPath;
+    private String tensorBoardLocalPath;
+    
     // VPC 配置（可选）
     private String subnetId;
     private String securityGroupId;
@@ -154,6 +158,32 @@ public class TrainingJobConfig {
             return this;
         }
         
+        /**
+         * 设置 TensorBoard 输出的 S3 路径
+         * 
+         * 训练容器会将 TensorBoard 日志文件上传到此路径，
+         * 可通过 SageMaker Studio 或本地 TensorBoard 查看训练可视化。
+         * 
+         * @param tensorBoardS3OutputPath S3 路径，如 s3://bucket/tensorboard/
+         */
+        public Builder tensorBoardS3OutputPath(String tensorBoardS3OutputPath) {
+            config.tensorBoardS3OutputPath = tensorBoardS3OutputPath;
+            return this;
+        }
+        
+        /**
+         * 设置容器内 TensorBoard 日志的本地路径（可选）
+         * 
+         * 训练脚本应将 TensorBoard 日志写入此路径。
+         * 默认值为 /opt/ml/output/tensorboard。
+         * 
+         * @param tensorBoardLocalPath 容器内本地路径
+         */
+        public Builder tensorBoardLocalPath(String tensorBoardLocalPath) {
+            config.tensorBoardLocalPath = tensorBoardLocalPath;
+            return this;
+        }
+        
         public TrainingJobConfig build() {
             if (config.jobName == null || config.jobName.isEmpty()) {
                 throw new IllegalArgumentException("jobName 不能为空");
@@ -185,4 +215,6 @@ public class TrainingJobConfig {
     public String getSecurityGroupId() { return securityGroupId; }
     public String getS3SubmitDirectory() { return s3SubmitDirectory; }
     public String getEntryPoint() { return entryPoint; }
+    public String getTensorBoardS3OutputPath() { return tensorBoardS3OutputPath; }
+    public String getTensorBoardLocalPath() { return tensorBoardLocalPath; }
 }

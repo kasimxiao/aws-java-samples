@@ -27,6 +27,7 @@ import software.amazon.awssdk.services.sagemaker.model.SortBy;
 import software.amazon.awssdk.services.sagemaker.model.SortOrder;
 import software.amazon.awssdk.services.sagemaker.model.StopTrainingJobRequest;
 import software.amazon.awssdk.services.sagemaker.model.StoppingCondition;
+import software.amazon.awssdk.services.sagemaker.model.TensorBoardOutputConfig;
 import software.amazon.awssdk.services.sagemaker.model.TrainingInputMode;
 import software.amazon.awssdk.services.sagemaker.model.TrainingInstanceType;
 import software.amazon.awssdk.services.sagemaker.model.TrainingJobStatus;
@@ -145,6 +146,16 @@ public class SageMakerTrainingService {
                     .subnets(jobConfig.getSubnetId())
                     .securityGroupIds(jobConfig.getSecurityGroupId())
                     .build());
+        }
+
+        // TensorBoard 输出配置（可选）
+        if (jobConfig.getTensorBoardS3OutputPath() != null) {
+            TensorBoardOutputConfig.Builder tbConfigBuilder = TensorBoardOutputConfig.builder()
+                    .s3OutputPath(jobConfig.getTensorBoardS3OutputPath());
+            if (jobConfig.getTensorBoardLocalPath() != null) {
+                tbConfigBuilder.localPath(jobConfig.getTensorBoardLocalPath());
+            }
+            requestBuilder.tensorBoardOutputConfig(tbConfigBuilder.build());
         }
 
         CreateTrainingJobResponse response = sageMakerClient.createTrainingJob(requestBuilder.build());
@@ -267,6 +278,12 @@ public class SageMakerTrainingService {
         }
         if (job.hasHyperParameters() && !job.hyperParameters().isEmpty()) {
             System.out.println("超参数: " + job.hyperParameters());
+        }
+        if (job.tensorBoardOutputConfig() != null) {
+            System.out.println("TensorBoard S3 路径: " + job.tensorBoardOutputConfig().s3OutputPath());
+            if (job.tensorBoardOutputConfig().localPath() != null) {
+                System.out.println("TensorBoard 本地路径: " + job.tensorBoardOutputConfig().localPath());
+            }
         }
         System.out.println("====================================================");
     }
