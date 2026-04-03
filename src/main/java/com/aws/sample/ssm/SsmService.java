@@ -42,7 +42,10 @@ public class SsmService implements AutoCloseable {
         SendCommandRequest request = SendCommandRequest.builder()
                 .instanceIds(instanceId)
                 .documentName("AWS-RunShellScript")
-                .parameters(Map.of("commands", commands))
+                .parameters(Map.of(
+                        "commands", commands,
+                        "executionTimeout", List.of("600")
+                ))
                 .timeoutSeconds(600)
                 .build();
 
@@ -168,7 +171,10 @@ public class SsmService implements AutoCloseable {
         SendCommandRequest request = SendCommandRequest.builder()
                 .instanceIds(instanceId)
                 .documentName("AWS-RunShellScript")
-                .parameters(Map.of("commands", commands))
+                .parameters(Map.of(
+                        "commands", commands,
+                        "executionTimeout", List.of(String.valueOf(timeout))
+                ))
                 .timeoutSeconds(timeout)
                 .cloudWatchOutputConfig(CloudWatchOutputConfig.builder()
                         .cloudWatchLogGroupName(logGroupName)
